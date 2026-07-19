@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import { getProduct } from "@/lib/api";
 import { formatPrice } from "@/lib/format";
 import ProductGallery from "@/components/ProductGallery";
+import ProductActions from "@/components/ProductActions";
 
 export const dynamic = "force-dynamic";
 
@@ -124,14 +125,7 @@ export default async function ProductPage({ params }: Props) {
                 </>
               )}
             </div>
-            <button
-              type="button"
-              disabled={!inStock}
-              className="mt-4 w-full rounded-md bg-orange-500 py-3 text-sm font-semibold text-white transition hover:bg-orange-600 disabled:cursor-not-allowed disabled:bg-slate-300"
-              title={inStock ? "Cart coming soon" : "Out of stock"}
-            >
-              {inStock ? "Add to Cart" : "Out of Stock"}
-            </button>
+            <ProductActions productId={product.id} stock={product.stock} />
           </div>
 
           {product.attributes.length > 0 && (

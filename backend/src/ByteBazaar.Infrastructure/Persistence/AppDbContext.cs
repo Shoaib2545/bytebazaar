@@ -23,6 +23,104 @@ public class AppDbContext : IdentityDbContext<AppUser, IdentityRole<Guid>, Guid>
     public DbSet<Product> Products => Set<Product>();
     public DbSet<ProductImage> ProductImages => Set<ProductImage>();
     public DbSet<RefreshToken> RefreshTokens => Set<RefreshToken>();
+    public DbSet<Cart> Carts => Set<Cart>();
+    public DbSet<CartItem> CartItems => Set<CartItem>();
+    public DbSet<Order> Orders => Set<Order>();
+    public DbSet<OrderItem> OrderItems => Set<OrderItem>();
+    public DbSet<OrderStatusHistory> OrderStatusHistories => Set<OrderStatusHistory>();
+    public DbSet<Address> Addresses => Set<Address>();
+    public DbSet<WishlistItem> WishlistItems => Set<WishlistItem>();
+
+    public async Task ExecuteInTransactionAsync(Func<CancellationToken, Task> operation, CancellationToken cancellationToken = default)
+    {
+        if (Database.IsNpgsql())
+        {
+            var strategy = Database.CreateExecutionStrategy();
+            await strategy.ExecuteAsync(async () =>
+            {
+                await using var transaction = await Database.BeginTransactionAsync(cancellationToken);
+                await operation(cancellationToken);
+                await transaction.CommitAsync(cancellationToken);
+            });
+        }
+        else
+        {
+            // InMemory provider has no transactions; operations are written to defer
+            // SaveChanges until fully validated, which gives equivalent semantics.
+            await operation(cancellationToken);
+        }
+    }
+
+    public async Task<List<Guid>> DecrementStockAsync(
+        IReadOnlyList<(Guid ProductId, int Quantity)> lines, CancellationToken cancellationToken = default)
+    {
+        var failed = new List<Guid>();
+
+        if (Database.IsNpgsql())
+        {
+            // Set-based conditional updates guarded by stock >= quantity; the caller runs this
+            // inside a transaction and throws on any failure so partial decrements roll back.
+            foreach (var (productId, quantity) in lines)
+            {
+                var updated = await Products
+                    .Where(p => p.Id == productId && p.Stock >= quantity)
+                    .ExecuteUpdateAsync(s => s.SetProperty(p => p.Stock, p => p.Stock - quantity), cancellationToken);
+                if (updated == 0)
+                    failed.Add(productId);
+            }
+        }
+        else
+        {
+            // InMemory emulation: validate every line first, write nothing when any fails.
+            var ids = lines.Select(l => l.ProductId).ToList();
+            var products = await Products
+                .Where(p => ids.Contains(p.Id))
+                .ToDictionaryAsync(p => p.Id, cancellationToken);
+
+            foreach (var (productId, quantity) in lines)
+            {
+                if (!products.TryGetValue(productId, out var product) || product.Stock < quantity)
+                    failed.Add(productId);
+            }
+
+            if (failed.Count == 0)
+            {
+                foreach (var (productId, quantity) in lines)
+                    products[productId].Stock -= quantity;
+                await SaveChangesAsync(cancellationToken);
+            }
+        }
+
+        return failed;
+    }
+
+    public async Task RestoreStockAsync(
+        IReadOnlyList<(Guid ProductId, int Quantity)> lines, CancellationToken cancellationToken = default)
+    {
+        if (Database.IsNpgsql())
+        {
+            foreach (var (productId, quantity) in lines)
+            {
+                await Products
+                    .Where(p => p.Id == productId)
+                    .ExecuteUpdateAsync(s => s.SetProperty(p => p.Stock, p => p.Stock + quantity), cancellationToken);
+            }
+        }
+        else
+        {
+            var ids = lines.Select(l => l.ProductId).ToList();
+            var products = await Products
+                .Where(p => ids.Contains(p.Id))
+                .ToDictionaryAsync(p => p.Id, cancellationToken);
+
+            foreach (var (productId, quantity) in lines)
+            {
+                if (products.TryGetValue(productId, out var product))
+                    product.Stock += quantity;
+            }
+            await SaveChangesAsync(cancellationToken);
+        }
+    }
 
     public Expression<Func<Product, bool>> BuildAttributeFilter(string code, IReadOnlyList<string> values)
     {
@@ -192,6 +290,98 @@ public class AppDbContext : IdentityDbContext<AppUser, IdentityRole<Guid>, Guid>
             e.Property(t => t.Token).HasMaxLength(200).IsRequired();
             e.HasIndex(t => t.Token).IsUnique();
             e.HasIndex(t => t.UserId);
+        });
+
+        builder.Entity<Cart>(e =>
+        {
+            e.ToTable("Carts");
+            // Not unique: most rows have a NULL UserId (anonymous carts) and null-handling in
+            // unique indexes differs between providers; one-cart-per-user is enforced in CartService.
+            e.HasIndex(c => c.UserId);
+            e.HasIndex(c => c.AnonymousId);
+            e.HasMany(c => c.Items)
+                .WithOne(i => i.Cart)
+                .HasForeignKey(i => i.CartId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        builder.Entity<CartItem>(e =>
+        {
+            e.ToTable("CartItems");
+            e.HasIndex(i => new { i.CartId, i.ProductId }).IsUnique();
+            e.HasOne(i => i.Product)
+                .WithMany()
+                .HasForeignKey(i => i.ProductId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        builder.Entity<Order>(e =>
+        {
+            e.ToTable("Orders");
+            e.Property(o => o.OrderNumber).HasMaxLength(20).IsRequired();
+            e.HasIndex(o => o.OrderNumber).IsUnique();
+            e.HasIndex(o => o.UserId);
+            e.HasIndex(o => o.Status);
+            e.HasIndex(o => o.CreatedAt);
+            e.Property(o => o.Subtotal).HasPrecision(12, 2);
+            e.Property(o => o.ShippingFee).HasPrecision(12, 2);
+            e.Property(o => o.Total).HasPrecision(12, 2);
+            e.Property(o => o.ShippingCode).HasMaxLength(50);
+            e.Property(o => o.FullName).HasMaxLength(200).IsRequired();
+            e.Property(o => o.Phone).HasMaxLength(30).IsRequired();
+            e.Property(o => o.Email).HasMaxLength(256).IsRequired();
+            e.Property(o => o.AddressLine).HasMaxLength(500).IsRequired();
+            e.Property(o => o.City).HasMaxLength(100).IsRequired();
+            e.Property(o => o.Region).HasMaxLength(100).IsRequired();
+            e.Property(o => o.Notes).HasMaxLength(1000);
+            e.HasMany(o => o.Items)
+                .WithOne(i => i.Order)
+                .HasForeignKey(i => i.OrderId)
+                .OnDelete(DeleteBehavior.Cascade);
+            e.HasMany(o => o.History)
+                .WithOne(h => h.Order)
+                .HasForeignKey(h => h.OrderId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        builder.Entity<OrderItem>(e =>
+        {
+            e.ToTable("OrderItems");
+            // ProductId is intentionally not a foreign key: order lines are immutable
+            // snapshots and must survive product deletion.
+            e.Property(i => i.ProductName).HasMaxLength(300).IsRequired();
+            e.Property(i => i.ProductSlug).HasMaxLength(300).IsRequired();
+            e.Property(i => i.ImageUrl).HasMaxLength(500);
+            e.Property(i => i.UnitPrice).HasPrecision(12, 2);
+            e.HasIndex(i => i.ProductId);
+        });
+
+        builder.Entity<OrderStatusHistory>(e =>
+        {
+            e.ToTable("OrderStatusHistories");
+            e.Property(h => h.Note).HasMaxLength(500);
+            e.HasIndex(h => h.OrderId);
+        });
+
+        builder.Entity<Address>(e =>
+        {
+            e.ToTable("Addresses");
+            e.Property(a => a.FullName).HasMaxLength(200).IsRequired();
+            e.Property(a => a.Phone).HasMaxLength(30).IsRequired();
+            e.Property(a => a.AddressLine).HasMaxLength(500).IsRequired();
+            e.Property(a => a.City).HasMaxLength(100).IsRequired();
+            e.Property(a => a.Region).HasMaxLength(100).IsRequired();
+            e.HasIndex(a => a.UserId);
+        });
+
+        builder.Entity<WishlistItem>(e =>
+        {
+            e.ToTable("WishlistItems");
+            e.HasIndex(w => new { w.UserId, w.ProductId }).IsUnique();
+            e.HasOne(w => w.Product)
+                .WithMany()
+                .HasForeignKey(w => w.ProductId)
+                .OnDelete(DeleteBehavior.Cascade);
         });
     }
 }

@@ -1,12 +1,18 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { FormEvent, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { FormEvent, Suspense, useState } from "react";
 import { register } from "@/lib/auth-client";
 
-export default function RegisterPage() {
+function safeNext(next: string | null): string {
+  return next && next.startsWith("/") && !next.startsWith("//") ? next : "/";
+}
+
+function RegisterForm() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const next = safeNext(searchParams.get("next"));
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
@@ -20,10 +26,9 @@ export default function RegisterPage() {
     setBusy(true);
     try {
       await register(email, password, fullName, phone);
-      router.push("/");
+      router.push(next);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Registration failed.");
-    } finally {
       setBusy(false);
     }
   }
@@ -32,8 +37,7 @@ export default function RegisterPage() {
     "w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-orange-500 focus:outline-none focus:ring-1 focus:ring-orange-500";
 
   return (
-    <div className="mx-auto flex max-w-7xl justify-center px-4 py-16">
-      <div className="w-full max-w-md rounded-xl border border-slate-200 bg-white p-8 shadow-sm">
+    <div className="w-full max-w-md rounded-xl border border-slate-200 bg-white p-8 shadow-sm">
         <h1 className="text-2xl font-bold text-blue-950">Create account</h1>
         <p className="mt-1 text-sm text-slate-500">
           Join ByteBazaar for faster checkout and order tracking.
@@ -126,13 +130,28 @@ export default function RegisterPage() {
         <p className="mt-5 text-center text-sm text-slate-500">
           Already have an account?{" "}
           <Link
-            href="/login"
+            href={`/login${next !== "/" ? `?next=${encodeURIComponent(next)}` : ""}`}
             className="font-semibold text-orange-600 hover:underline"
           >
             Sign in
           </Link>
         </p>
-      </div>
+    </div>
+  );
+}
+
+export default function RegisterPage() {
+  return (
+    <div className="mx-auto flex max-w-7xl justify-center px-4 py-16">
+      <Suspense
+        fallback={
+          <div className="w-full max-w-md rounded-xl border border-slate-200 bg-white p-8 text-center text-sm text-slate-400 shadow-sm">
+            Loading...
+          </div>
+        }
+      >
+        <RegisterForm />
+      </Suspense>
     </div>
   );
 }

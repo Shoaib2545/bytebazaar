@@ -21,3 +21,17 @@ public enum ProductStatus
     Draft,
     Active
 }
+
+public enum OrderStatus
+{
+    Pending,
+    Confirmed,
+    Shipped,
+    Delivered,
+    Cancelled
+}
+
+public enum PaymentMethod
+{
+    COD
+}

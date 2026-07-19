@@ -8,6 +8,8 @@ import AttributesPage from './pages/AttributesPage.tsx';
 import BrandsPage from './pages/BrandsPage.tsx';
 import ProductsPage from './pages/ProductsPage.tsx';
 import ProductEditPage from './pages/ProductEditPage.tsx';
+import OrdersPage from './pages/OrdersPage.tsx';
+import OrderDetailPage from './pages/OrderDetailPage.tsx';
 
 export default function App() {
   return (
@@ -16,6 +18,8 @@ export default function App() {
       <Route element={<AuthGuard />}>
         <Route element={<AdminLayout />}>
           <Route path="/" element={<DashboardPage />} />
+          <Route path="/orders" element={<OrdersPage />} />
+          <Route path="/orders/:id" element={<OrderDetailPage />} />
           <Route path="/categories" element={<CategoriesPage />} />
           <Route path="/attributes" element={<AttributesPage />} />
           <Route path="/brands" element={<BrandsPage />} />

@@ -1,3 +1,4 @@
+using ByteBazaar.Application.Exceptions;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
@@ -19,6 +20,21 @@ public class ExceptionHandlingMiddleware
         try
         {
             await _next(context);
+        }
+        catch (BadRequestException ex)
+        {
+            _logger.LogInformation("Bad request for {Method} {Path}: {Message}", context.Request.Method, context.Request.Path, ex.Message);
+            await WriteProblemAsync(context, StatusCodes.Status400BadRequest, "Bad Request", ex.Message);
+        }
+        catch (NotFoundException ex)
+        {
+            _logger.LogInformation("Not found for {Method} {Path}: {Message}", context.Request.Method, context.Request.Path, ex.Message);
+            await WriteProblemAsync(context, StatusCodes.Status404NotFound, "Not Found", ex.Message);
+        }
+        catch (StockConflictException ex)
+        {
+            _logger.LogWarning("Stock conflict for {Method} {Path}: {Message}", context.Request.Method, context.Request.Path, ex.Message);
+            await WriteProblemAsync(context, StatusCodes.Status409Conflict, "Conflict", ex.Message);
         }
         catch (DbUpdateException ex)
         {

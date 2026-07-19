@@ -8,10 +8,12 @@ namespace ByteBazaar.Application.Services;
 public class AdminCatalogService
 {
     private readonly IAppDbContext _db;
+    private readonly IStorefrontRevalidator _revalidator;
 
-    public AdminCatalogService(IAppDbContext db)
+    public AdminCatalogService(IAppDbContext db, IStorefrontRevalidator revalidator)
     {
         _db = db;
+        _revalidator = revalidator;
     }
 
     // ----- Categories -----
@@ -41,6 +43,7 @@ public class AdminCatalogService
         Apply(category, request);
         _db.Categories.Add(category);
         await _db.SaveChangesAsync(ct);
+        _revalidator.Revalidate("/", $"/category/{category.Slug}");
         return ToDto(category);
     }
 
@@ -48,8 +51,12 @@ public class AdminCatalogService
     {
         var category = await _db.Categories.FirstOrDefaultAsync(c => c.Id == id, ct);
         if (category is null) return null;
+        var oldSlug = category.Slug;
         Apply(category, request);
         await _db.SaveChangesAsync(ct);
+        _revalidator.Revalidate(oldSlug == category.Slug
+            ? new[] { "/", $"/category/{category.Slug}" }
+            : new[] { "/", $"/category/{oldSlug}", $"/category/{category.Slug}" });
         return ToDto(category);
     }
 
@@ -59,6 +66,7 @@ public class AdminCatalogService
         if (category is null) return false;
         _db.Categories.Remove(category);
         await _db.SaveChangesAsync(ct);
+        _revalidator.Revalidate("/", $"/category/{category.Slug}");
         return true;
     }
 
@@ -260,6 +268,7 @@ public class AdminCatalogService
         Apply(product, request);
         _db.Products.Add(product);
         await _db.SaveChangesAsync(ct);
+        await RevalidateProductAsync(product, ct);
         return ToDto(product);
     }
 
@@ -273,7 +282,12 @@ public class AdminCatalogService
         _db.ProductImages.RemoveRange(product.Images);
         product.Images.Clear();
         Apply(product, request);
+        // The replacement images have explicit key values, so navigation fixup would
+        // track them as Modified (issuing UPDATEs against non-existent rows) instead
+        // of Added. Add them explicitly so EF inserts them.
+        _db.ProductImages.AddRange(product.Images);
         await _db.SaveChangesAsync(ct);
+        await RevalidateProductAsync(product, ct);
         return ToDto(product);
     }
 
@@ -283,7 +297,20 @@ public class AdminCatalogService
         if (product is null) return false;
         _db.Products.Remove(product);
         await _db.SaveChangesAsync(ct);
+        await RevalidateProductAsync(product, ct);
         return true;
+    }
+
+    private async Task RevalidateProductAsync(Product product, CancellationToken ct)
+    {
+        var paths = new List<string> { "/", $"/product/{product.Slug}" };
+        var categorySlug = await _db.Categories.AsNoTracking()
+            .Where(c => c.Id == product.CategoryId)
+            .Select(c => c.Slug)
+            .FirstOrDefaultAsync(ct);
+        if (categorySlug is not null)
+            paths.Add($"/category/{categorySlug}");
+        _revalidator.Revalidate(paths.ToArray());
     }
 
     private static void Apply(Product product, ProductUpsertRequest request)

@@ -1,3 +1,4 @@
+using ByteBazaar.Application.Abstractions;
 using ByteBazaar.Application.Services;
 using FluentValidation;
 using Microsoft.Extensions.DependencyInjection;
@@ -10,6 +11,14 @@ public static class DependencyInjection
     {
         services.AddScoped<CatalogService>();
         services.AddScoped<AdminCatalogService>();
+        services.AddScoped<CartService>();
+        services.AddScoped<CheckoutService>();
+        services.AddScoped<OrderService>();
+        services.AddScoped<AdminOrderService>();
+        services.AddScoped<DashboardService>();
+        services.AddScoped<WishlistService>();
+        services.AddScoped<AddressService>();
+        services.AddSingleton<IShippingOptionsProvider, DefaultShippingOptionsProvider>();
         services.AddValidatorsFromAssembly(typeof(DependencyInjection).Assembly);
         return services;
     }

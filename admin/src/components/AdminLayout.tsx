@@ -6,6 +6,7 @@ import {
   DashboardOutlined,
   LogoutOutlined,
   ShopOutlined,
+  ShoppingCartOutlined,
   TagsOutlined,
   UnorderedListOutlined,
   UserOutlined,
@@ -16,6 +17,7 @@ const { Sider, Header, Content } = Layout;
 
 const menuItems = [
   { key: '/', icon: <DashboardOutlined />, label: 'Dashboard' },
+  { key: '/orders', icon: <ShoppingCartOutlined />, label: 'Orders' },
   { key: '/categories', icon: <AppstoreOutlined />, label: 'Categories' },
   { key: '/attributes', icon: <UnorderedListOutlined />, label: 'Attributes' },
   { key: '/brands', icon: <TagsOutlined />, label: 'Brands' },

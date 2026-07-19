@@ -1,5 +1,8 @@
 import axios, { AxiosError, type InternalAxiosRequestConfig } from 'axios';
 import type {
+  AdminOrderDetail,
+  AdminOrderListItem,
+  AdminOrderListParams,
   AdminProduct,
   AdminProductListItem,
   AttributeDefinition,
@@ -9,7 +12,9 @@ import type {
   BrandInput,
   Category,
   CategoryInput,
+  DashboardSummary,
   Id,
+  OrderStatusInput,
   Paged,
   ProductInput,
   ProductListParams,
@@ -218,4 +223,44 @@ export async function updateProduct(id: Id, input: ProductInput): Promise<AdminP
 
 export async function deleteProduct(id: Id): Promise<void> {
   await api.delete(`/api/admin/products/${id}`);
+}
+
+// ---------------------------------------------------------------------------
+// Orders (M4)
+// ---------------------------------------------------------------------------
+
+export async function listAdminOrders(
+  params: AdminOrderListParams,
+): Promise<Paged<AdminOrderListItem>> {
+  const res = await api.get<Paged<AdminOrderListItem>>('/api/admin/orders', {
+    params: {
+      status: params.status ?? undefined,
+      search: params.search || undefined,
+      page: params.page,
+      pageSize: params.pageSize,
+    },
+  });
+  return res.data;
+}
+
+export async function getAdminOrder(id: Id): Promise<AdminOrderDetail> {
+  const res = await api.get<AdminOrderDetail>(`/api/admin/orders/${id}`);
+  return res.data;
+}
+
+export async function updateAdminOrderStatus(
+  id: Id,
+  input: OrderStatusInput,
+): Promise<AdminOrderDetail> {
+  const res = await api.post<AdminOrderDetail>(`/api/admin/orders/${id}/status`, input);
+  return res.data;
+}
+
+// ---------------------------------------------------------------------------
+// Dashboard (M4)
+// ---------------------------------------------------------------------------
+
+export async function getDashboardSummary(): Promise<DashboardSummary> {
+  const res = await api.get<DashboardSummary>('/api/admin/dashboard/summary');
+  return res.data;
 }

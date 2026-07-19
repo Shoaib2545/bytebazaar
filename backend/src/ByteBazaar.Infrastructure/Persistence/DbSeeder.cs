@@ -38,6 +38,30 @@ public static class DbSeeder
                 await userManager.AddToRoleAsync(admin, "Admin");
         }
 
+        const string customerEmail = "customer@bytebazaar.local";
+        var customer = await userManager.FindByEmailAsync(customerEmail);
+        if (customer is null)
+        {
+            customer = new AppUser
+            {
+                Id = Guid.NewGuid(),
+                UserName = customerEmail,
+                Email = customerEmail,
+                EmailConfirmed = true,
+                FullName = "Demo Customer",
+                Phone = "0300-1234567"
+            };
+            var createdCustomer = await userManager.CreateAsync(customer, "Customer123$");
+            if (createdCustomer.Succeeded)
+                await userManager.AddToRoleAsync(customer, "Customer");
+        }
+
+        await SeedCatalogAsync(db);
+        await SeedDemoOrdersAsync(db, customer.Id);
+    }
+
+    private static async Task SeedCatalogAsync(AppDbContext db)
+    {
         if (await db.Categories.AnyAsync())
             return;
 
@@ -235,6 +259,105 @@ public static class DbSeeder
                 new() { ["connectivity"] = "Wired" }, 5900m),
             Prod(accessories, lenovo, "Lenovo Legion H300 Headset", "lenovo-legion-h300-headset", 12500m, 18,
                 new() { ["connectivity"] = "Wired" }));
+
+        await db.SaveChangesAsync();
+    }
+
+    private static async Task SeedDemoOrdersAsync(AppDbContext db, Guid customerId)
+    {
+        if (await db.Orders.AnyAsync())
+            return;
+
+        var products = await db.Products
+            .Include(p => p.Images)
+            .Where(p => p.Status == ProductStatus.Active)
+            .OrderBy(p => p.Name)
+            .Take(6)
+            .ToListAsync();
+        if (products.Count < 3)
+            return;
+
+        var sequence = 0;
+        Order MakeOrder(OrderStatus status, DateTime createdAt, params (Product Product, int Quantity)[] lines)
+        {
+            sequence++;
+            const decimal shippingFee = 250m;
+            var order = new Order
+            {
+                Id = Guid.NewGuid(),
+                OrderNumber = $"BB-{sequence:D6}",
+                UserId = customerId,
+                Status = status,
+                PaymentMethod = PaymentMethod.COD,
+                ShippingFee = shippingFee,
+                ShippingCode = "standard",
+                FullName = "Demo Customer",
+                Phone = "0300-1234567",
+                Email = "customer@bytebazaar.local",
+                AddressLine = "House 12, Street 5, Gulberg III",
+                City = "Lahore",
+                Region = "Punjab",
+                Notes = "Please call before delivery.",
+                CreatedAt = createdAt
+            };
+
+            foreach (var (product, quantity) in lines)
+            {
+                order.Items.Add(new OrderItem
+                {
+                    Id = Guid.NewGuid(),
+                    OrderId = order.Id,
+                    ProductId = product.Id,
+                    ProductName = product.Name,
+                    ProductSlug = product.Slug,
+                    ImageUrl = product.Images.OrderBy(i => i.SortOrder).Select(i => i.Url).FirstOrDefault(),
+                    UnitPrice = product.SalePrice ?? product.Price,
+                    Quantity = quantity
+                });
+            }
+
+            order.Subtotal = order.Items.Sum(i => i.UnitPrice * i.Quantity);
+            order.Total = order.Subtotal + shippingFee;
+
+            order.History.Add(new OrderStatusHistory
+            {
+                Id = Guid.NewGuid(),
+                OrderId = order.Id,
+                Status = OrderStatus.Pending,
+                Note = "Order placed.",
+                CreatedAt = createdAt
+            });
+            if (status is OrderStatus.Confirmed or OrderStatus.Shipped)
+            {
+                order.History.Add(new OrderStatusHistory
+                {
+                    Id = Guid.NewGuid(),
+                    OrderId = order.Id,
+                    Status = OrderStatus.Confirmed,
+                    Note = "Order confirmed.",
+                    CreatedAt = createdAt.AddHours(3)
+                });
+            }
+            if (status == OrderStatus.Shipped)
+            {
+                order.History.Add(new OrderStatusHistory
+                {
+                    Id = Guid.NewGuid(),
+                    OrderId = order.Id,
+                    Status = OrderStatus.Shipped,
+                    Note = "Handed over to courier.",
+                    CreatedAt = createdAt.AddDays(1)
+                });
+            }
+
+            return order;
+        }
+
+        var now = DateTime.UtcNow;
+        db.Orders.AddRange(
+            MakeOrder(OrderStatus.Shipped, now.AddDays(-6), (products[0], 1), (products[1], 1)),
+            MakeOrder(OrderStatus.Confirmed, now.AddDays(-2), (products[2], 2)),
+            MakeOrder(OrderStatus.Pending, now.AddHours(-4), (products[3 % products.Count], 1)));
 
         await db.SaveChangesAsync();
     }

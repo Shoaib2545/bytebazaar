@@ -2,6 +2,7 @@ using System.Text;
 using System.Text.Json.Serialization;
 using ByteBazaar.Api.Middleware;
 using ByteBazaar.Api.Services;
+using Hangfire;
 using ByteBazaar.Application;
 using ByteBazaar.Infrastructure;
 using ByteBazaar.Infrastructure.Persistence;
@@ -86,6 +87,11 @@ try
     app.UseCors("Frontends");
     app.UseAuthentication();
     app.UseAuthorization();
+
+    // Hangfire is registered only when the DB was reachable at startup (see AddInfrastructure).
+    if (app.Environment.IsDevelopment() && app.Services.GetService<Hangfire.JobStorage>() is not null)
+        app.UseHangfireDashboard("/hangfire");
+
     app.MapControllers();
 
     using (var scope = app.Services.CreateScope())

@@ -137,3 +137,87 @@ export interface ProductListParams {
   search?: string;
   categoryId?: Id;
 }
+
+// ---------------------------------------------------------------------------
+// Orders (M4)
+// ---------------------------------------------------------------------------
+
+export type OrderStatus = 'Pending' | 'Confirmed' | 'Shipped' | 'Delivered' | 'Cancelled';
+export type PaymentMethod = 'COD';
+
+export interface AdminOrderListItem {
+  id: Id;
+  orderNumber: string;
+  createdAt: string;
+  customerName: string;
+  phone: string;
+  city: string;
+  status: OrderStatus;
+  total: number;
+  itemCount: number;
+}
+
+export interface OrderShippingAddress {
+  fullName: string;
+  phone: string;
+  email: string;
+  addressLine: string;
+  city: string;
+  region: string;
+}
+
+export interface OrderItem {
+  productId: Id;
+  name: string;
+  slug: string;
+  imageUrl: string | null;
+  unitPrice: number;
+  quantity: number;
+  lineTotal: number;
+}
+
+export interface OrderHistoryEntry {
+  status: OrderStatus;
+  note: string | null;
+  createdAt: string;
+}
+
+export interface AdminOrderDetail {
+  id: Id;
+  orderNumber: string;
+  createdAt: string;
+  status: OrderStatus;
+  paymentMethod: PaymentMethod;
+  subtotal: number;
+  shippingFee: number;
+  total: number;
+  shippingAddress: OrderShippingAddress;
+  items: OrderItem[];
+  history: OrderHistoryEntry[];
+}
+
+export interface AdminOrderListParams {
+  status?: OrderStatus;
+  search?: string;
+  page?: number;
+  pageSize?: number;
+}
+
+export interface OrderStatusInput {
+  status: OrderStatus;
+  note?: string;
+}
+
+export interface LowStockProduct {
+  id: Id;
+  name: string;
+  stock: number;
+}
+
+export interface DashboardSummary {
+  ordersToday: number;
+  salesToday: number;
+  pendingOrders: number;
+  totalProducts: number;
+  lowStock: LowStockProduct[];
+}
