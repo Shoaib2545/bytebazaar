@@ -5,6 +5,7 @@ import {
   Button,
   Card,
   Col,
+  DatePicker,
   Empty,
   Input,
   InputNumber,
@@ -16,6 +17,7 @@ import {
   Switch,
   Typography,
 } from 'antd';
+import dayjs from 'dayjs';
 import {
   ArrowDownOutlined,
   ArrowLeftOutlined,
@@ -64,6 +66,9 @@ interface ProductFormValues {
   description: string;
   price: number | null;
   salePrice: number | null;
+  saleStart: string | null;
+  saleEnd: string | null;
+  isFeatured: boolean;
   stock: number | null;
   status: ProductStatus;
   images: { url: string }[];
@@ -135,6 +140,9 @@ function buildProductSchema(defs: AttributeDefinition[]) {
         z.null(),
         z.undefined(),
       ]),
+      saleStart: z.union([z.string(), z.null(), z.undefined()]),
+      saleEnd: z.union([z.string(), z.null(), z.undefined()]),
+      isFeatured: z.boolean(),
       stock: z
         .union([
           z.number().int('Stock must be a whole number').min(0, 'Stock must be at least 0'),
@@ -154,6 +162,17 @@ function buildProductSchema(defs: AttributeDefinition[]) {
           code: 'custom',
           path: ['salePrice'],
           message: 'Sale price must be lower than the regular price',
+        });
+      }
+      if (
+        values.saleStart &&
+        values.saleEnd &&
+        !dayjs(values.saleEnd).isAfter(dayjs(values.saleStart))
+      ) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['saleEnd'],
+          message: 'Sale end must be after sale start',
         });
       }
     });
@@ -368,6 +387,9 @@ function ProductForm({ product }: { product: AdminProduct | null }) {
       description: product?.description ?? '',
       price: product?.price ?? null,
       salePrice: product?.salePrice ?? null,
+      saleStart: product?.saleStart ?? null,
+      saleEnd: product?.saleEnd ?? null,
+      isFeatured: product?.isFeatured ?? false,
       stock: product?.stock ?? 0,
       status: product?.status ?? 'Draft',
       images: (product?.images ?? []).map((url) => ({ url })),
@@ -401,6 +423,7 @@ function ProductForm({ product }: { product: AdminProduct | null }) {
   });
 
   const categoryId = watch('categoryId');
+  const salePrice = watch('salePrice');
 
   const attributesQuery = useQuery({
     queryKey: ['attributes', categoryId],
@@ -464,6 +487,9 @@ function ProductForm({ product }: { product: AdminProduct | null }) {
         description: values.description.trim() || null,
         price: values.price!,
         salePrice: values.salePrice ?? null,
+        saleStart: values.salePrice != null ? (values.saleStart ?? null) : null,
+        saleEnd: values.salePrice != null ? (values.saleEnd ?? null) : null,
+        isFeatured: values.isFeatured,
         stock: values.stock!,
         status: values.status,
         images: values.images.map((i) => i.url.trim()).filter(Boolean),
@@ -708,6 +734,55 @@ function ProductForm({ product }: { product: AdminProduct | null }) {
                 </Field>
               </Col>
             </Row>
+            {salePrice != null && (
+              <Row gutter={16}>
+                <Col span={12}>
+                  <Field label="Sale start" error={errors.saleStart?.message}>
+                    <Controller
+                      control={control}
+                      name="saleStart"
+                      render={({ field }) => (
+                        <DatePicker
+                          style={{ width: '100%' }}
+                          showTime={{ format: 'HH:mm' }}
+                          placeholder="No start (always)"
+                          value={field.value ? dayjs(field.value) : null}
+                          onChange={(d) => field.onChange(d ? d.toISOString() : null)}
+                          status={errors.saleStart ? 'error' : undefined}
+                        />
+                      )}
+                    />
+                  </Field>
+                </Col>
+                <Col span={12}>
+                  <Field label="Sale end" error={errors.saleEnd?.message}>
+                    <Controller
+                      control={control}
+                      name="saleEnd"
+                      render={({ field }) => (
+                        <DatePicker
+                          style={{ width: '100%' }}
+                          showTime={{ format: 'HH:mm' }}
+                          placeholder="No end (always)"
+                          value={field.value ? dayjs(field.value) : null}
+                          onChange={(d) => field.onChange(d ? d.toISOString() : null)}
+                          status={errors.saleEnd ? 'error' : undefined}
+                        />
+                      )}
+                    />
+                  </Field>
+                </Col>
+              </Row>
+            )}
+            <Field label="Featured product" error={errors.isFeatured?.message}>
+              <Controller
+                control={control}
+                name="isFeatured"
+                render={({ field }) => (
+                  <Switch checked={field.value} onChange={(v) => field.onChange(v)} />
+                )}
+              />
+            </Field>
             <Row gutter={16}>
               <Col span={12}>
                 <Field label="Stock" required error={errors.stock?.message}>

@@ -8,6 +8,8 @@ public class Order
     public OrderStatus Status { get; set; } = OrderStatus.Pending;
     public PaymentMethod PaymentMethod { get; set; } = PaymentMethod.COD;
     public decimal Subtotal { get; set; }
+    public string? CouponCode { get; set; }
+    public decimal Discount { get; set; }
     public decimal ShippingFee { get; set; }
     public decimal Total { get; set; }
     public string ShippingCode { get; set; } = string.Empty;

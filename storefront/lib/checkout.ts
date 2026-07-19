@@ -27,6 +27,10 @@ export interface CheckoutResult {
   orderNumber: string;
   total: number;
   status: string;
+  /** Coupon applied to the order, if any. */
+  couponCode: string | null;
+  /** Discount amount applied to the order; 0 when none. */
+  discount: number;
 }
 
 export async function getShippingOptions(): Promise<ShippingOption[]> {
@@ -64,6 +68,9 @@ export interface StoredOrderSummary {
   email: string;
   fullName: string;
   placedAt: string;
+  /** Coupon applied to the order (older stored entries may omit these). */
+  couponCode?: string | null;
+  discount?: number;
 }
 
 export function orderSummaryKey(orderNumber: string): string {

@@ -88,6 +88,20 @@ export default function ConfirmationClient({
           </p>
           {summary && (
             <div className="mt-3 space-y-1 text-sm text-slate-600">
+              {(summary.discount ?? 0) > 0 && (
+                <p>
+                  Coupon{" "}
+                  {summary.couponCode && (
+                    <span className="font-semibold uppercase text-green-700">
+                      {summary.couponCode}
+                    </span>
+                  )}{" "}
+                  saved you{" "}
+                  <span className="font-bold text-green-700">
+                    {formatPrice(summary.discount ?? 0)}
+                  </span>
+                </p>
+              )}
               <p>
                 Total (incl. shipping):{" "}
                 <span className="font-bold text-blue-950">

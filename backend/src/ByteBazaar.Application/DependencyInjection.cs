@@ -12,10 +12,14 @@ public static class DependencyInjection
         services.AddScoped<CatalogService>();
         services.AddScoped<AdminCatalogService>();
         services.AddScoped<CartService>();
+        services.AddScoped<CouponService>();
+        services.AddScoped<AdminCouponService>();
+        services.AddScoped<BannerService>();
         services.AddScoped<CheckoutService>();
         services.AddScoped<OrderService>();
         services.AddScoped<AdminOrderService>();
         services.AddScoped<DashboardService>();
+        services.AddScoped<ReportService>();
         services.AddScoped<WishlistService>();
         services.AddScoped<AddressService>();
         services.AddSingleton<IShippingOptionsProvider, DefaultShippingOptionsProvider>();

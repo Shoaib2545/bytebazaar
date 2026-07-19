@@ -80,6 +80,9 @@ public class ProductUpsertRequestValidator : AbstractValidator<ProductUpsertRequ
         RuleFor(x => x.SalePrice).GreaterThan(0).When(x => x.SalePrice is not null);
         RuleFor(x => x.SalePrice).LessThan(x => x.Price).When(x => x.SalePrice is not null)
             .WithMessage("Sale price must be lower than the regular price.");
+        RuleFor(x => x.SaleEnd).GreaterThan(x => x.SaleStart!.Value)
+            .When(x => x.SaleStart is not null && x.SaleEnd is not null)
+            .WithMessage("Sale end must be after sale start.");
         RuleFor(x => x.Stock).GreaterThanOrEqualTo(0);
         RuleFor(x => x.Status).IsInEnum();
         RuleForEach(x => x.Images).NotEmpty().MaximumLength(500);

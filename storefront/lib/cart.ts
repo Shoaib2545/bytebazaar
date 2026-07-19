@@ -20,10 +20,23 @@ export interface CartItem {
 export interface Cart {
   items: CartItem[];
   subtotal: number;
+  /** Applied coupon code (uppercase) or null when none. */
+  couponCode: string | null;
+  /** Discount amount from the coupon; 0 when none. */
+  discount: number;
+  /** subtotal - discount */
+  total: number;
   itemCount: number;
 }
 
-export const EMPTY_CART: Cart = { items: [], subtotal: 0, itemCount: 0 };
+export const EMPTY_CART: Cart = {
+  items: [],
+  subtotal: 0,
+  couponCode: null,
+  discount: 0,
+  total: 0,
+  itemCount: 0,
+};
 
 async function cartRequest(path: string, init: RequestInit = {}): Promise<Cart> {
   const res = await apiFetch(path, init);
@@ -64,4 +77,21 @@ export function removeCartItem(productId: string): Promise<Cart> {
   return cartRequest(`/api/cart/items/${encodeURIComponent(productId)}`, {
     method: "DELETE",
   });
+}
+
+/**
+ * Apply a coupon code. 400 (with a ProblemDetails `detail` explaining why —
+ * unknown/inactive/expired/min order not met/fully used) surfaces as an Error.
+ */
+export function applyCoupon(code: string): Promise<Cart> {
+  return cartRequest("/api/cart/coupon", {
+    method: "POST",
+    headers: jsonHeaders,
+    body: JSON.stringify({ code }),
+  });
+}
+
+/** Remove the applied coupon from the cart. */
+export function removeCoupon(): Promise<Cart> {
+  return cartRequest("/api/cart/coupon", { method: "DELETE" });
 }

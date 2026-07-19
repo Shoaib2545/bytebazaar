@@ -238,6 +238,9 @@ public class AdminCatalogService
                 BrandName = p.Brand != null ? p.Brand.Name : null,
                 Price = p.Price,
                 SalePrice = p.SalePrice,
+                SaleStart = p.SaleStart,
+                SaleEnd = p.SaleEnd,
+                IsFeatured = p.IsFeatured,
                 Stock = p.Stock,
                 Status = p.Status,
                 ImageUrl = p.Images.OrderBy(i => i.SortOrder).Select(i => i.Url).FirstOrDefault(),
@@ -322,6 +325,9 @@ public class AdminCatalogService
         product.Description = request.Description;
         product.Price = request.Price;
         product.SalePrice = request.SalePrice;
+        product.SaleStart = request.SaleStart;
+        product.SaleEnd = request.SaleEnd;
+        product.IsFeatured = request.IsFeatured;
         product.Stock = request.Stock;
         product.Status = request.Status;
         product.Attributes = request.Attributes is null
@@ -353,6 +359,9 @@ public class AdminCatalogService
         Description = p.Description,
         Price = p.Price,
         SalePrice = p.SalePrice,
+        SaleStart = p.SaleStart,
+        SaleEnd = p.SaleEnd,
+        IsFeatured = p.IsFeatured,
         Stock = p.Stock,
         Status = p.Status,
         Images = p.Images.OrderBy(i => i.SortOrder).Select(i => i.Url).ToList(),

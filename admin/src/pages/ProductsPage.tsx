@@ -12,10 +12,11 @@ import {
   TreeSelect,
   Typography,
 } from 'antd';
-import { DeleteOutlined, EditOutlined, PlusOutlined } from '@ant-design/icons';
+import { DeleteOutlined, EditOutlined, PlusOutlined, StarFilled } from '@ant-design/icons';
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { ColumnsType } from 'antd/es/table';
 import { deleteProduct, listBrands, listCategories, listProducts } from '../lib/api.ts';
+import { isSaleActive } from '../lib/sale.ts';
 import type { AdminProductListItem, Category, Id } from '../lib/types.ts';
 
 interface CategoryTreeOption {
@@ -90,7 +91,12 @@ export default function ProductsPage() {
       key: 'name',
       render: (name: string, record) => (
         <Space direction="vertical" size={0}>
-          <Typography.Text strong>{name}</Typography.Text>
+          <Space size={6}>
+            {record.isFeatured && (
+              <StarFilled style={{ color: '#faad14' }} title="Featured product" />
+            )}
+            <Typography.Text strong>{name}</Typography.Text>
+          </Space>
           <Typography.Text type="secondary" style={{ fontSize: 12 }}>
             /{record.slug}
           </Typography.Text>
@@ -120,9 +126,16 @@ export default function ProductsPage() {
         <Space direction="vertical" size={0}>
           <span>{formatPrice(record.price)}</span>
           {record.salePrice != null && (
-            <Typography.Text type="success" style={{ fontSize: 12 }}>
-              Sale: {formatPrice(record.salePrice)}
-            </Typography.Text>
+            <Space size={4}>
+              <Typography.Text type="success" style={{ fontSize: 12 }}>
+                Sale: {formatPrice(record.salePrice)}
+              </Typography.Text>
+              {isSaleActive(record.salePrice, record.saleStart, record.saleEnd) && (
+                <Tag color="volcano" style={{ marginInlineEnd: 0 }}>
+                  On sale
+                </Tag>
+              )}
+            </Space>
           )}
         </Space>
       ),

@@ -13,6 +13,7 @@ public class Product
     public DateTime? SaleStart { get; set; }
     public DateTime? SaleEnd { get; set; }
     public int Stock { get; set; }
+    public bool IsFeatured { get; set; }
     public ProductStatus Status { get; set; } = ProductStatus.Draft;
     public Dictionary<string, string> Attributes { get; set; } = new();
     public string? MetaTitle { get; set; }

@@ -36,6 +36,11 @@ public class ExceptionHandlingMiddleware
             _logger.LogWarning("Stock conflict for {Method} {Path}: {Message}", context.Request.Method, context.Request.Path, ex.Message);
             await WriteProblemAsync(context, StatusCodes.Status409Conflict, "Conflict", ex.Message);
         }
+        catch (OrderConflictException ex)
+        {
+            _logger.LogWarning("Order transition conflict for {Method} {Path}: {Message}", context.Request.Method, context.Request.Path, ex.Message);
+            await WriteProblemAsync(context, StatusCodes.Status409Conflict, "Conflict", ex.Message);
+        }
         catch (DbUpdateException ex)
         {
             _logger.LogWarning(ex, "Database update conflict for {Method} {Path}", context.Request.Method, context.Request.Path);

@@ -1,15 +1,22 @@
 import Link from "next/link";
 import {
   firstLeafCategory,
+  getBanners,
   getCategoryProducts,
   getCategoryTree,
+  getFeaturedProducts,
 } from "@/lib/api";
+import HeroCarousel from "@/components/HeroCarousel";
 import ProductCard from "@/components/ProductCard";
 
 export const dynamic = "force-dynamic";
 
 export default async function HomePage() {
-  const tree = await getCategoryTree();
+  const [tree, banners, featured] = await Promise.all([
+    getCategoryTree(),
+    getBanners(),
+    getFeaturedProducts(8),
+  ]);
   const leaf = firstLeafCategory(tree);
   const latest = leaf
     ? await getCategoryProducts(leaf.slug, {
@@ -19,38 +26,90 @@ export default async function HomePage() {
       })
     : null;
 
+  const heroBanners = banners
+    .filter((b) => b.placement === "Hero")
+    .sort((a, b) => a.sortOrder - b.sortOrder);
+  const stripBanners = banners
+    .filter((b) => b.placement === "Strip")
+    .sort((a, b) => a.sortOrder - b.sortOrder);
+
   return (
     <div className="mx-auto max-w-7xl px-4 py-8">
-      {/* Hero */}
-      <section className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-blue-950 via-blue-900 to-blue-950 px-8 py-14 text-white sm:px-12">
-        <div className="absolute -right-20 -top-20 h-64 w-64 rounded-full bg-orange-500/20 blur-3xl" />
-        <div className="absolute -bottom-24 right-32 h-48 w-48 rounded-full bg-orange-500/10 blur-2xl" />
-        <p className="text-sm font-semibold uppercase tracking-widest text-orange-400">
-          Build your dream rig
-        </p>
-        <h1 className="mt-2 max-w-xl text-3xl font-extrabold leading-tight sm:text-5xl">
-          PC Hardware &amp; Electronics at{" "}
-          <span className="text-orange-500">Bazaar</span> Prices
-        </h1>
-        <p className="mt-4 max-w-lg text-sm text-white/70 sm:text-base">
-          Graphics cards, processors, laptops, peripherals and more — genuine
-          stock, nationwide delivery, prices in PKR.
-        </p>
-        <div className="mt-6 flex flex-wrap gap-3">
-          <Link
-            href={leaf ? `/category/${leaf.slug}` : "/search?q=pc"}
-            className="rounded-md bg-orange-500 px-6 py-3 text-sm font-semibold text-white transition hover:bg-orange-600"
-          >
-            Shop Now
-          </Link>
-          <Link
-            href="/register"
-            className="rounded-md border border-white/30 px-6 py-3 text-sm font-semibold text-white/90 transition hover:bg-white/10"
-          >
-            Create Account
-          </Link>
-        </div>
-      </section>
+      {/* Hero — real banners when available, static fallback otherwise */}
+      {heroBanners.length > 0 ? (
+        <HeroCarousel banners={heroBanners} />
+      ) : (
+        <section className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-blue-950 via-blue-900 to-blue-950 px-8 py-14 text-white sm:px-12">
+          <div className="absolute -right-20 -top-20 h-64 w-64 rounded-full bg-orange-500/20 blur-3xl" />
+          <div className="absolute -bottom-24 right-32 h-48 w-48 rounded-full bg-orange-500/10 blur-2xl" />
+          <p className="text-sm font-semibold uppercase tracking-widest text-orange-400">
+            Build your dream rig
+          </p>
+          <h1 className="mt-2 max-w-xl text-3xl font-extrabold leading-tight sm:text-5xl">
+            PC Hardware &amp; Electronics at{" "}
+            <span className="text-orange-500">Bazaar</span> Prices
+          </h1>
+          <p className="mt-4 max-w-lg text-sm text-white/70 sm:text-base">
+            Graphics cards, processors, laptops, peripherals and more — genuine
+            stock, nationwide delivery, prices in PKR.
+          </p>
+          <div className="mt-6 flex flex-wrap gap-3">
+            <Link
+              href={leaf ? `/category/${leaf.slug}` : "/search?q=pc"}
+              className="rounded-md bg-orange-500 px-6 py-3 text-sm font-semibold text-white transition hover:bg-orange-600"
+            >
+              Shop Now
+            </Link>
+            <Link
+              href="/register"
+              className="rounded-md border border-white/30 px-6 py-3 text-sm font-semibold text-white/90 transition hover:bg-white/10"
+            >
+              Create Account
+            </Link>
+          </div>
+        </section>
+      )}
+
+      {/* Strip banners */}
+      {stripBanners.length > 0 && (
+        <section className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {stripBanners.map((banner) => {
+            const inner = (
+              <>
+                {banner.imageUrl && (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={banner.imageUrl}
+                    alt={banner.title}
+                    className="absolute inset-0 h-full w-full object-cover"
+                    loading="lazy"
+                  />
+                )}
+                <div className="absolute inset-0 bg-blue-950/60" />
+                <div className="relative z-10 px-5 py-4">
+                  <p className="text-sm font-bold text-white">{banner.title}</p>
+                  {banner.subtitle && (
+                    <p className="mt-0.5 line-clamp-1 text-xs text-white/75">
+                      {banner.subtitle}
+                    </p>
+                  )}
+                </div>
+              </>
+            );
+            const cls =
+              "relative block h-20 overflow-hidden rounded-lg bg-blue-950 transition hover:opacity-90";
+            return banner.linkUrl ? (
+              <Link key={banner.id} href={banner.linkUrl} className={cls}>
+                {inner}
+              </Link>
+            ) : (
+              <div key={banner.id} className={cls}>
+                {inner}
+              </div>
+            );
+          })}
+        </section>
+      )}
 
       {/* Category tiles */}
       {tree.length > 0 && (
@@ -95,6 +154,20 @@ export default async function HomePage() {
                   {cat.name}
                 </span>
               </Link>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {/* Featured products */}
+      {featured.length > 0 && (
+        <section className="mt-12">
+          <h2 className="mb-4 text-xl font-bold text-blue-950">
+            Featured Products
+          </h2>
+          <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
+            {featured.map((p) => (
+              <ProductCard key={p.id} product={p} />
             ))}
           </div>
         </section>

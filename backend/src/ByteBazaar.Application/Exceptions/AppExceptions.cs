@@ -23,3 +23,14 @@ public class StockConflictException : Exception
     {
     }
 }
+
+/// <summary>
+/// Maps to HTTP 409 in the API — two admins transitioned the same order concurrently and
+/// this request lost the race (the order is no longer in the expected status).
+/// </summary>
+public class OrderConflictException : Exception
+{
+    public OrderConflictException(string message) : base(message)
+    {
+    }
+}

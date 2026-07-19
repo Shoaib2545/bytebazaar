@@ -26,6 +26,8 @@ public class CheckoutResultDto
 {
     public Guid OrderId { get; set; }
     public string OrderNumber { get; set; } = string.Empty;
+    public string? CouponCode { get; set; }
+    public decimal Discount { get; set; }
     public decimal Total { get; set; }
     public OrderStatus Status { get; set; }
 }
@@ -74,6 +76,8 @@ public class OrderDetailDto
     public OrderStatus Status { get; set; }
     public PaymentMethod PaymentMethod { get; set; }
     public decimal Subtotal { get; set; }
+    public string? CouponCode { get; set; }
+    public decimal Discount { get; set; }
     public decimal ShippingFee { get; set; }
     public decimal Total { get; set; }
     public ShippingAddressDto ShippingAddress { get; set; } = new();
@@ -115,6 +119,20 @@ public class LowStockProductDto
     public int Stock { get; set; }
 }
 
+public class TopProductDto
+{
+    public Guid ProductId { get; set; }
+    public string Name { get; set; } = string.Empty;
+    public int Units { get; set; }
+    public decimal Revenue { get; set; }
+}
+
+public class DailySalesDto
+{
+    public string Date { get; set; } = string.Empty;
+    public decimal Revenue { get; set; }
+}
+
 public class DashboardSummaryDto
 {
     public int OrdersToday { get; set; }
@@ -122,6 +140,8 @@ public class DashboardSummaryDto
     public int PendingOrders { get; set; }
     public int TotalProducts { get; set; }
     public List<LowStockProductDto> LowStock { get; set; } = new();
+    public List<TopProductDto> TopProducts { get; set; } = new();
+    public List<DailySalesDto> SalesLast7Days { get; set; } = new();
 }
 
 public class AddressDto

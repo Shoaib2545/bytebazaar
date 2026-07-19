@@ -30,6 +30,8 @@ public class AppDbContext : IdentityDbContext<AppUser, IdentityRole<Guid>, Guid>
     public DbSet<OrderStatusHistory> OrderStatusHistories => Set<OrderStatusHistory>();
     public DbSet<Address> Addresses => Set<Address>();
     public DbSet<WishlistItem> WishlistItems => Set<WishlistItem>();
+    public DbSet<Coupon> Coupons => Set<Coupon>();
+    public DbSet<Banner> Banners => Set<Banner>();
 
     public async Task ExecuteInTransactionAsync(Func<CancellationToken, Task> operation, CancellationToken cancellationToken = default)
     {
@@ -120,6 +122,43 @@ public class AppDbContext : IdentityDbContext<AppUser, IdentityRole<Guid>, Guid>
             }
             await SaveChangesAsync(cancellationToken);
         }
+    }
+
+    public async Task<bool> TryTransitionOrderStatusAsync(
+        Guid orderId, Domain.OrderStatus expectedStatus, Domain.OrderStatus newStatus, CancellationToken cancellationToken = default)
+    {
+        if (Database.IsNpgsql())
+        {
+            // Atomic claim: a concurrent transaction that already moved the order out of
+            // expectedStatus makes this match 0 rows (after its commit releases the row lock).
+            var updated = await Orders
+                .Where(o => o.Id == orderId && o.Status == expectedStatus)
+                .ExecuteUpdateAsync(s => s.SetProperty(o => o.Status, newStatus), cancellationToken);
+            return updated > 0;
+        }
+
+        // InMemory emulation: verify only — the caller mutates the tracked entity and saves,
+        // preserving rollback-on-throw semantics (nothing is written unless SaveChanges runs).
+        return await Orders.AnyAsync(o => o.Id == orderId && o.Status == expectedStatus, cancellationToken);
+    }
+
+    public async Task<bool> TryIncrementCouponUsageAsync(Guid couponId, CancellationToken cancellationToken = default)
+    {
+        if (Database.IsNpgsql())
+        {
+            var updated = await Coupons
+                .Where(c => c.Id == couponId && (c.MaxUses == null || c.UsedCount < c.MaxUses))
+                .ExecuteUpdateAsync(s => s.SetProperty(c => c.UsedCount, c => c.UsedCount + 1), cancellationToken);
+            return updated > 0;
+        }
+
+        // InMemory emulation: mutate the tracked entity; the caller's SaveChanges persists it
+        // (deferred so a later throw in the same operation leaves nothing written).
+        var coupon = await Coupons.FirstOrDefaultAsync(c => c.Id == couponId, cancellationToken);
+        if (coupon is null || (coupon.MaxUses is not null && coupon.UsedCount >= coupon.MaxUses))
+            return false;
+        coupon.UsedCount++;
+        return true;
     }
 
     public Expression<Func<Product, bool>> BuildAttributeFilter(string code, IReadOnlyList<string> values)
@@ -292,9 +331,36 @@ public class AppDbContext : IdentityDbContext<AppUser, IdentityRole<Guid>, Guid>
             e.HasIndex(t => t.UserId);
         });
 
+        builder.Entity<AppUser>(e =>
+        {
+            // Default true so the migration backfills existing users as active
+            // (otherwise the seeded admin would be locked out).
+            e.Property(u => u.IsActive).HasDefaultValue(true);
+        });
+
+        builder.Entity<Coupon>(e =>
+        {
+            e.ToTable("Coupons");
+            e.Property(c => c.Code).HasMaxLength(50).IsRequired();
+            e.HasIndex(c => c.Code).IsUnique();
+            e.Property(c => c.Value).HasPrecision(12, 2);
+            e.Property(c => c.MinOrderAmount).HasPrecision(12, 2);
+        });
+
+        builder.Entity<Banner>(e =>
+        {
+            e.ToTable("Banners");
+            e.Property(b => b.Title).HasMaxLength(200).IsRequired();
+            e.Property(b => b.Subtitle).HasMaxLength(500);
+            e.Property(b => b.ImageUrl).HasMaxLength(500).IsRequired();
+            e.Property(b => b.LinkUrl).HasMaxLength(500);
+            e.HasIndex(b => new { b.Placement, b.SortOrder });
+        });
+
         builder.Entity<Cart>(e =>
         {
             e.ToTable("Carts");
+            e.Property(c => c.CouponCode).HasMaxLength(50);
             // Not unique: most rows have a NULL UserId (anonymous carts) and null-handling in
             // unique indexes differs between providers; one-cart-per-user is enforced in CartService.
             e.HasIndex(c => c.UserId);
@@ -324,6 +390,8 @@ public class AppDbContext : IdentityDbContext<AppUser, IdentityRole<Guid>, Guid>
             e.HasIndex(o => o.Status);
             e.HasIndex(o => o.CreatedAt);
             e.Property(o => o.Subtotal).HasPrecision(12, 2);
+            e.Property(o => o.CouponCode).HasMaxLength(50);
+            e.Property(o => o.Discount).HasPrecision(12, 2);
             e.Property(o => o.ShippingFee).HasPrecision(12, 2);
             e.Property(o => o.Total).HasPrecision(12, 2);
             e.Property(o => o.ShippingCode).HasMaxLength(50);

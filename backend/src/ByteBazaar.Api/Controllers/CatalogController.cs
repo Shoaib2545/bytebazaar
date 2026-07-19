@@ -38,6 +38,12 @@ public class CatalogController : ControllerBase
         return result is null ? NotFound() : Ok(result);
     }
 
+    /// <summary>Featured products (Active + isFeatured, newest first) for the home page.</summary>
+    [HttpGet("featured")]
+    public async Task<ActionResult<List<ProductListItemDto>>> GetFeatured(
+        [FromQuery] int count = 8, CancellationToken ct = default)
+        => Ok(await _catalogService.GetFeaturedAsync(count, ct));
+
     [HttpGet("products/{slug}")]
     public async Task<ActionResult<ProductDetailDto>> GetProduct(string slug, CancellationToken ct)
     {

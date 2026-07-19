@@ -3,11 +3,16 @@ import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { Avatar, Dropdown, Layout, Menu, Space, Typography } from 'antd';
 import {
   AppstoreOutlined,
+  BarChartOutlined,
   DashboardOutlined,
   LogoutOutlined,
+  PercentageOutlined,
+  PictureOutlined,
+  SafetyCertificateOutlined,
   ShopOutlined,
   ShoppingCartOutlined,
   TagsOutlined,
+  TeamOutlined,
   UnorderedListOutlined,
   UserOutlined,
 } from '@ant-design/icons';
@@ -15,20 +20,31 @@ import { useAuth } from '../lib/auth.tsx';
 
 const { Sider, Header, Content } = Layout;
 
-const menuItems = [
-  { key: '/', icon: <DashboardOutlined />, label: 'Dashboard' },
-  { key: '/orders', icon: <ShoppingCartOutlined />, label: 'Orders' },
-  { key: '/categories', icon: <AppstoreOutlined />, label: 'Categories' },
-  { key: '/attributes', icon: <UnorderedListOutlined />, label: 'Attributes' },
-  { key: '/brands', icon: <TagsOutlined />, label: 'Brands' },
-  { key: '/products', icon: <ShopOutlined />, label: 'Products' },
-];
-
 export default function AdminLayout() {
   const [collapsed, setCollapsed] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
   const { user, signOut } = useAuth();
+  const isAdmin = !!user?.roles.includes('Admin');
+
+  const menuItems = useMemo(
+    () => [
+      { key: '/', icon: <DashboardOutlined />, label: 'Dashboard' },
+      { key: '/orders', icon: <ShoppingCartOutlined />, label: 'Orders' },
+      { key: '/categories', icon: <AppstoreOutlined />, label: 'Categories' },
+      { key: '/attributes', icon: <UnorderedListOutlined />, label: 'Attributes' },
+      { key: '/brands', icon: <TagsOutlined />, label: 'Brands' },
+      { key: '/products', icon: <ShopOutlined />, label: 'Products' },
+      { key: '/coupons', icon: <PercentageOutlined />, label: 'Coupons' },
+      { key: '/banners', icon: <PictureOutlined />, label: 'Banners' },
+      { key: '/customers', icon: <TeamOutlined />, label: 'Customers' },
+      { key: '/reports', icon: <BarChartOutlined />, label: 'Reports' },
+      ...(isAdmin
+        ? [{ key: '/staff', icon: <SafetyCertificateOutlined />, label: 'Staff' }]
+        : []),
+    ],
+    [isAdmin],
+  );
 
   const selectedKey = useMemo(() => {
     const path = location.pathname;
@@ -37,7 +53,7 @@ export default function AdminLayout() {
       .filter((m) => m.key !== '/' && path.startsWith(m.key))
       .sort((a, b) => b.key.length - a.key.length)[0];
     return match?.key ?? '/';
-  }, [location.pathname]);
+  }, [location.pathname, menuItems]);
 
   return (
     <Layout style={{ minHeight: '100vh' }}>

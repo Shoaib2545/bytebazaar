@@ -122,7 +122,8 @@ export default function CheckoutPage() {
 
   const selectedOption = options.find((o) => o.code === shippingCode) ?? null;
   const shippingFee = selectedOption?.fee ?? 0;
-  const total = cart.subtotal + shippingFee;
+  // cart.total = subtotal - discount (server-computed)
+  const total = cart.total + shippingFee;
   const city = citySelect === OTHER_CITY ? otherCity.trim() : citySelect;
 
   async function onSubmit(e: FormEvent) {
@@ -160,6 +161,8 @@ export default function CheckoutPage() {
         email: email.trim(),
         fullName: fullName.trim(),
         placedAt: new Date().toISOString(),
+        couponCode: result.couponCode ?? null,
+        discount: result.discount ?? 0,
       });
       refresh(); // server cleared the cart
       router.push(`/order-confirmation/${encodeURIComponent(result.orderNumber)}`);
@@ -431,6 +434,16 @@ export default function CheckoutPage() {
                 {formatPrice(cart.subtotal)}
               </dd>
             </div>
+            {cart.discount > 0 && (
+              <div className="flex justify-between">
+                <dt className="text-slate-500">
+                  Discount{cart.couponCode ? ` (${cart.couponCode})` : ""}
+                </dt>
+                <dd className="font-semibold text-green-600">
+                  −{formatPrice(cart.discount)}
+                </dd>
+              </div>
+            )}
             <div className="flex justify-between">
               <dt className="text-slate-500">
                 Shipping{selectedOption ? ` (${selectedOption.name})` : ""}

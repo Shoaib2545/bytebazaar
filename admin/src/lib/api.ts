@@ -1,5 +1,8 @@
 import axios, { AxiosError, type InternalAxiosRequestConfig } from 'axios';
 import type {
+  AdminCustomerDetail,
+  AdminCustomerListItem,
+  AdminCustomerListParams,
   AdminOrderDetail,
   AdminOrderListItem,
   AdminOrderListParams,
@@ -8,16 +11,27 @@ import type {
   AttributeDefinition,
   AttributeInput,
   AuthResponse,
+  Banner,
+  BannerInput,
   Brand,
   BrandInput,
+  BrandReportRow,
   Category,
   CategoryInput,
+  CategoryReportRow,
+  Coupon,
+  CouponInput,
   DashboardSummary,
   Id,
   OrderStatusInput,
   Paged,
   ProductInput,
   ProductListParams,
+  ReportParams,
+  SalesReportRow,
+  StaffCreateInput,
+  StaffUpdateInput,
+  StaffUser,
 } from './types';
 
 const TOKEN_STORAGE_KEY = 'bytebazaar_admin_access_token';
@@ -263,4 +277,150 @@ export async function updateAdminOrderStatus(
 export async function getDashboardSummary(): Promise<DashboardSummary> {
   const res = await api.get<DashboardSummary>('/api/admin/dashboard/summary');
   return res.data;
+}
+
+// ---------------------------------------------------------------------------
+// Coupons (M5)
+// ---------------------------------------------------------------------------
+
+export async function listCoupons(): Promise<Coupon[]> {
+  const res = await api.get<Coupon[]>('/api/admin/coupons');
+  return res.data;
+}
+
+export async function createCoupon(input: CouponInput): Promise<Coupon> {
+  const res = await api.post<Coupon>('/api/admin/coupons', input);
+  return res.data;
+}
+
+export async function updateCoupon(id: Id, input: CouponInput): Promise<Coupon> {
+  const res = await api.put<Coupon>(`/api/admin/coupons/${id}`, input);
+  return res.data;
+}
+
+export async function deleteCoupon(id: Id): Promise<void> {
+  await api.delete(`/api/admin/coupons/${id}`);
+}
+
+// ---------------------------------------------------------------------------
+// Banners (M5)
+// ---------------------------------------------------------------------------
+
+export async function listBanners(): Promise<Banner[]> {
+  const res = await api.get<Banner[]>('/api/admin/banners');
+  return res.data;
+}
+
+export async function createBanner(input: BannerInput): Promise<Banner> {
+  const res = await api.post<Banner>('/api/admin/banners', input);
+  return res.data;
+}
+
+export async function updateBanner(id: Id, input: BannerInput): Promise<Banner> {
+  const res = await api.put<Banner>(`/api/admin/banners/${id}`, input);
+  return res.data;
+}
+
+export async function deleteBanner(id: Id): Promise<void> {
+  await api.delete(`/api/admin/banners/${id}`);
+}
+
+// ---------------------------------------------------------------------------
+// Customers (M5)
+// ---------------------------------------------------------------------------
+
+export async function listCustomers(
+  params: AdminCustomerListParams,
+): Promise<Paged<AdminCustomerListItem>> {
+  const res = await api.get<Paged<AdminCustomerListItem>>('/api/admin/customers', {
+    params: {
+      search: params.search || undefined,
+      page: params.page,
+      pageSize: params.pageSize,
+    },
+  });
+  return res.data;
+}
+
+export async function getCustomer(id: Id): Promise<AdminCustomerDetail> {
+  const res = await api.get<AdminCustomerDetail>(`/api/admin/customers/${id}`);
+  return res.data;
+}
+
+// ---------------------------------------------------------------------------
+// Staff (M5, Admin role only)
+// ---------------------------------------------------------------------------
+
+export async function listStaff(): Promise<StaffUser[]> {
+  const res = await api.get<StaffUser[]>('/api/admin/staff');
+  return res.data;
+}
+
+export async function createStaff(input: StaffCreateInput): Promise<StaffUser> {
+  const res = await api.post<StaffUser>('/api/admin/staff', input);
+  return res.data;
+}
+
+export async function updateStaff(id: Id, input: StaffUpdateInput): Promise<StaffUser> {
+  const res = await api.put<StaffUser>(`/api/admin/staff/${id}`, input);
+  return res.data;
+}
+
+export async function resetStaffPassword(id: Id, newPassword: string): Promise<void> {
+  await api.post(`/api/admin/staff/${id}/reset-password`, { newPassword });
+}
+
+// ---------------------------------------------------------------------------
+// Reports (M5)
+// ---------------------------------------------------------------------------
+
+export async function getSalesReport(params: ReportParams): Promise<SalesReportRow[]> {
+  const res = await api.get<SalesReportRow[]>('/api/admin/reports/sales', {
+    params: { from: params.from, to: params.to, groupBy: 'day' },
+  });
+  return res.data;
+}
+
+export async function getCategoryReport(params: ReportParams): Promise<CategoryReportRow[]> {
+  const res = await api.get<CategoryReportRow[]>('/api/admin/reports/by-category', {
+    params: { from: params.from, to: params.to },
+  });
+  return res.data;
+}
+
+export async function getBrandReport(params: ReportParams): Promise<BrandReportRow[]> {
+  const res = await api.get<BrandReportRow[]>('/api/admin/reports/by-brand', {
+    params: { from: params.from, to: params.to },
+  });
+  return res.data;
+}
+
+/**
+ * Downloads a report as CSV (format=csv) and triggers a browser download.
+ * `report` is one of "sales" | "by-category" | "by-brand".
+ */
+export async function downloadReportCsv(
+  report: 'sales' | 'by-category' | 'by-brand',
+  params: ReportParams,
+): Promise<void> {
+  const res = await api.get<Blob>(`/api/admin/reports/${report}`, {
+    params: {
+      from: params.from,
+      to: params.to,
+      groupBy: report === 'sales' ? 'day' : undefined,
+      format: 'csv',
+    },
+    responseType: 'blob',
+  });
+  const disposition = (res.headers['content-disposition'] as string | undefined) ?? '';
+  const match = /filename\*?=(?:UTF-8'')?"?([^";]+)"?/i.exec(disposition);
+  const filename = match?.[1] ?? `${report}-report.csv`;
+  const url = URL.createObjectURL(res.data);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
 }

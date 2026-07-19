@@ -184,6 +184,16 @@ export default function OrderDetailClient({
                   {formatPrice(order.subtotal)}
                 </dd>
               </div>
+              {order.discount > 0 && (
+                <div className="flex justify-between">
+                  <dt className="text-slate-500">
+                    Discount{order.couponCode ? ` (${order.couponCode})` : ""}
+                  </dt>
+                  <dd className="font-semibold text-green-600">
+                    −{formatPrice(order.discount)}
+                  </dd>
+                </div>
+              )}
               <div className="flex justify-between">
                 <dt className="text-slate-500">Shipping</dt>
                 <dd className="font-semibold text-slate-800">

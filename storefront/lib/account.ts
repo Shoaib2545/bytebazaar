@@ -58,6 +58,10 @@ export interface OrderDetail {
   status: OrderStatus;
   paymentMethod: string;
   subtotal: number;
+  /** Coupon applied to the order, if any. */
+  couponCode: string | null;
+  /** Discount amount from the coupon; 0 when none. */
+  discount: number;
   shippingFee: number;
   total: number;
   shippingAddress: OrderShippingAddress;

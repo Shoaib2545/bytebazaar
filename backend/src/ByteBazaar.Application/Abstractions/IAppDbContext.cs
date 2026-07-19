@@ -19,6 +19,8 @@ public interface IAppDbContext
     DbSet<OrderStatusHistory> OrderStatusHistories { get; }
     DbSet<Address> Addresses { get; }
     DbSet<WishlistItem> WishlistItems { get; }
+    DbSet<Coupon> Coupons { get; }
+    DbSet<Banner> Banners { get; }
 
     /// <summary>
     /// Builds a provider-appropriate predicate matching products whose Attributes dictionary
@@ -46,6 +48,24 @@ public interface IAppDbContext
 
     /// <summary>Adds the quantities back to product stock (e.g. cancelling a confirmed order).</summary>
     Task RestoreStockAsync(IReadOnlyList<(Guid ProductId, int Quantity)> lines, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Concurrency guard for order status transitions. On Npgsql this is a set-based conditional
+    /// UPDATE (WHERE Id = orderId AND Status = expectedStatus) that atomically claims the row —
+    /// a concurrent admin who already transitioned the order makes this return false. On the
+    /// InMemory provider it only verifies the current status (the caller mutates the tracked
+    /// entity and saves, preserving rollback-on-throw semantics). Callers must run inside
+    /// <see cref="ExecuteInTransactionAsync"/> and treat false as a conflict.
+    /// </summary>
+    Task<bool> TryTransitionOrderStatusAsync(Guid orderId, Domain.OrderStatus expectedStatus, Domain.OrderStatus newStatus, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Atomically increments a coupon's UsedCount guarded by UsedCount &lt; MaxUses (null MaxUses =
+    /// unlimited). Returns false when the coupon is exhausted or missing. On Npgsql this is a
+    /// conditional set-based UPDATE; on the InMemory provider the tracked entity is mutated and
+    /// persisted by the caller's SaveChanges. Call inside the checkout transaction.
+    /// </summary>
+    Task<bool> TryIncrementCouponUsageAsync(Guid couponId, CancellationToken cancellationToken = default);
 
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);
 }

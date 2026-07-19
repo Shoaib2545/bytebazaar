@@ -20,8 +20,10 @@ import {
   Cart,
   EMPTY_CART,
   addCartItem,
+  applyCoupon as applyCartCoupon,
   getCart,
   removeCartItem,
+  removeCoupon as removeCartCoupon,
   updateCartItem,
 } from "@/lib/cart";
 import {
@@ -40,6 +42,8 @@ interface CartContextValue {
   addItem: (productId: string, quantity: number) => Promise<void>;
   updateItem: (productId: string, quantity: number) => Promise<void>;
   removeItem: (productId: string) => Promise<void>;
+  applyCoupon: (code: string) => Promise<void>;
+  removeCoupon: () => Promise<void>;
   refresh: () => Promise<void>;
 }
 
@@ -93,6 +97,14 @@ function CartProvider({ children }: { children: React.ReactNode }) {
     setCart(await removeCartItem(productId));
   }, []);
 
+  const applyCoupon = useCallback(async (code: string) => {
+    setCart(await applyCartCoupon(code));
+  }, []);
+
+  const removeCoupon = useCallback(async () => {
+    setCart(await removeCartCoupon());
+  }, []);
+
   const value = useMemo<CartContextValue>(
     () => ({
       cart,
@@ -101,9 +113,20 @@ function CartProvider({ children }: { children: React.ReactNode }) {
       addItem,
       updateItem,
       removeItem,
+      applyCoupon,
+      removeCoupon,
       refresh,
     }),
-    [cart, loading, addItem, updateItem, removeItem, refresh]
+    [
+      cart,
+      loading,
+      addItem,
+      updateItem,
+      removeItem,
+      applyCoupon,
+      removeCoupon,
+      refresh,
+    ]
   );
 
   return <CartContext.Provider value={value}>{children}</CartContext.Provider>;

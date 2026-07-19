@@ -38,6 +38,7 @@ public class CheckoutService
         if (cart is null || cart.Items.Count == 0)
             throw new BadRequestException("Your cart is empty.");
 
+        var now = DateTime.UtcNow;
         var productIds = cart.Items.Select(i => i.ProductId).ToList();
         var products = await _db.Products.AsNoTracking()
             .Where(p => productIds.Contains(p.Id) && p.Status == ProductStatus.Active)
@@ -48,6 +49,8 @@ public class CheckoutService
                 p.Slug,
                 p.Price,
                 p.SalePrice,
+                p.SaleStart,
+                p.SaleEnd,
                 p.Stock,
                 ImageUrl = p.Images.OrderBy(i => i.SortOrder).Select(i => i.Url).FirstOrDefault()
             })
@@ -71,12 +74,31 @@ public class CheckoutService
                     ProductName = product.Name,
                     ProductSlug = product.Slug,
                     ImageUrl = product.ImageUrl,
-                    UnitPrice = product.SalePrice ?? product.Price,
+                    UnitPrice = ProductPricing.EffectiveUnitPrice(
+                        product.Price, product.SalePrice, product.SaleStart, product.SaleEnd, now),
                     Quantity = cartItem.Quantity
                 });
             }
 
             var subtotal = items.Sum(i => i.UnitPrice * i.Quantity);
+
+            // Re-validate the cart's coupon against the final subtotal; the usage counter is
+            // claimed atomically below (TryIncrementCouponUsageAsync) inside this transaction.
+            Coupon? coupon = null;
+            var discount = 0m;
+            if (!string.IsNullOrEmpty(cart.CouponCode))
+            {
+                coupon = await _db.Coupons.AsNoTracking()
+                    .FirstOrDefaultAsync(c => c.Code == cart.CouponCode, innerCt)
+                    ?? throw new BadRequestException($"Coupon \"{cart.CouponCode}\" no longer exists. Remove it and try again.");
+
+                var reason = CouponRules.GetRejectionReason(coupon, subtotal, DateTime.UtcNow);
+                if (reason is not null)
+                    throw new BadRequestException(reason);
+
+                discount = CouponRules.ComputeDiscount(coupon, subtotal);
+            }
+
             order = new Order
             {
                 Id = Guid.NewGuid(),
@@ -85,8 +107,10 @@ public class CheckoutService
                 Status = OrderStatus.Pending,
                 PaymentMethod = request.PaymentMethod,
                 Subtotal = subtotal,
+                CouponCode = coupon?.Code,
+                Discount = discount,
                 ShippingFee = shipping.Fee,
-                Total = subtotal + shipping.Fee,
+                Total = subtotal - discount + shipping.Fee,
                 ShippingCode = shipping.Code,
                 FullName = request.FullName,
                 Phone = request.Phone,
@@ -111,9 +135,15 @@ public class CheckoutService
                 CreatedAt = DateTime.UtcNow
             });
 
+            // Claim a coupon use atomically (guarded by usedCount < maxUses); losing the
+            // race throws inside the transaction so no order is created.
+            if (coupon is not null && !await _db.TryIncrementCouponUsageAsync(coupon.Id, innerCt))
+                throw new BadRequestException($"Coupon \"{coupon.Code}\" has reached its usage limit.");
+
             _db.Orders.Add(order);
             _db.CartItems.RemoveRange(cart.Items);
             cart.Items.Clear();
+            cart.CouponCode = null;
             cart.UpdatedAt = DateTime.UtcNow;
             await _db.SaveChangesAsync(innerCt);
         }, ct);
@@ -124,6 +154,8 @@ public class CheckoutService
         {
             OrderId = order.Id,
             OrderNumber = order.OrderNumber,
+            CouponCode = order.CouponCode,
+            Discount = order.Discount,
             Total = order.Total,
             Status = order.Status
         };

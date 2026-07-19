@@ -181,6 +181,7 @@ public class CartService
         var dto = new CartDto();
         if (cart is null || cart.Items.Count == 0) return dto;
 
+        var now = DateTime.UtcNow;
         var productIds = cart.Items.Select(i => i.ProductId).ToList();
         var products = await _db.Products.AsNoTracking()
             .Where(p => productIds.Contains(p.Id))
@@ -191,6 +192,8 @@ public class CartService
                 p.Slug,
                 p.Price,
                 p.SalePrice,
+                p.SaleStart,
+                p.SaleEnd,
                 p.Stock,
                 ImageUrl = p.Images.OrderBy(i => i.SortOrder).Select(i => i.Url).FirstOrDefault()
             })
@@ -201,7 +204,8 @@ public class CartService
             var product = products.FirstOrDefault(p => p.Id == item.ProductId);
             if (product is null) continue;
 
-            var unitPrice = product.SalePrice ?? product.Price;
+            var unitPrice = ProductPricing.EffectiveUnitPrice(
+                product.Price, product.SalePrice, product.SaleStart, product.SaleEnd, now);
             dto.Items.Add(new CartItemDto
             {
                 ProductId = product.Id,
@@ -217,6 +221,22 @@ public class CartService
 
         dto.Subtotal = dto.Items.Sum(i => i.LineTotal);
         dto.ItemCount = dto.Items.Sum(i => i.Quantity);
+        dto.Total = dto.Subtotal;
+
+        // Recompute the coupon on every read; if it became invalid it is silently dropped
+        // from the DTO (checkout re-validates authoritatively before creating an order).
+        if (!string.IsNullOrEmpty(cart.CouponCode))
+        {
+            var coupon = await _db.Coupons.AsNoTracking()
+                .FirstOrDefaultAsync(c => c.Code == cart.CouponCode, ct);
+            if (coupon is not null && CouponRules.GetRejectionReason(coupon, dto.Subtotal, now) is null)
+            {
+                dto.CouponCode = coupon.Code;
+                dto.Discount = CouponRules.ComputeDiscount(coupon, dto.Subtotal);
+                dto.Total = dto.Subtotal - dto.Discount;
+            }
+        }
+
         return dto;
     }
 }

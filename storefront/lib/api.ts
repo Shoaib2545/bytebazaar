@@ -97,6 +97,18 @@ export interface ProductDetail {
   metaDescription: string | null;
 }
 
+export type BannerPlacement = "Hero" | "Strip";
+
+export interface Banner {
+  id: string;
+  title: string;
+  subtitle: string | null;
+  imageUrl: string | null;
+  linkUrl: string | null;
+  placement: BannerPlacement;
+  sortOrder: number;
+}
+
 // ---------- fallbacks ----------
 
 export const EMPTY_PAGED: PagedProducts = {
@@ -165,6 +177,18 @@ export async function getProduct(slug: string): Promise<ProductDetail | null> {
     `/api/catalog/products/${encodeURIComponent(slug)}`,
     null
   );
+}
+
+/** Active banners currently within their [startsAt, endsAt] window. */
+export async function getBanners(): Promise<Banner[]> {
+  return apiGet<Banner[]>("/api/content/banners", []);
+}
+
+/** Featured (isFeatured, Active) products, newest first. */
+export async function getFeaturedProducts(
+  count = 8
+): Promise<ProductListItem[]> {
+  return apiGet<ProductListItem[]>(`/api/catalog/featured?count=${count}`, []);
 }
 
 export async function searchProducts(

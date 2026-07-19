@@ -78,6 +78,9 @@ public class ProductUpsertRequest
     public string? Description { get; set; }
     public decimal Price { get; set; }
     public decimal? SalePrice { get; set; }
+    public DateTime? SaleStart { get; set; }
+    public DateTime? SaleEnd { get; set; }
+    public bool IsFeatured { get; set; }
     public int Stock { get; set; }
     public ProductStatus Status { get; set; } = ProductStatus.Draft;
     public List<string> Images { get; set; } = new();
@@ -97,6 +100,9 @@ public class AdminProductListItemDto
     public string? BrandName { get; set; }
     public decimal Price { get; set; }
     public decimal? SalePrice { get; set; }
+    public DateTime? SaleStart { get; set; }
+    public DateTime? SaleEnd { get; set; }
+    public bool IsFeatured { get; set; }
     public int Stock { get; set; }
     public ProductStatus Status { get; set; }
     public string? ImageUrl { get; set; }
@@ -113,6 +119,9 @@ public class AdminProductDetailDto
     public string? Description { get; set; }
     public decimal Price { get; set; }
     public decimal? SalePrice { get; set; }
+    public DateTime? SaleStart { get; set; }
+    public DateTime? SaleEnd { get; set; }
+    public bool IsFeatured { get; set; }
     public int Stock { get; set; }
     public ProductStatus Status { get; set; }
     public List<string> Images { get; set; } = new();

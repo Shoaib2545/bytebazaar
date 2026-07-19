@@ -13,10 +13,12 @@ public class CartController : ControllerBase
     internal const string CartCookieName = "bb_cart_id";
 
     private readonly CartService _cartService;
+    private readonly CouponService _couponService;
 
-    public CartController(CartService cartService)
+    public CartController(CartService cartService, CouponService couponService)
     {
         _cartService = cartService;
+        _couponService = couponService;
     }
 
     [HttpGet]
@@ -56,6 +58,24 @@ public class CartController : ControllerBase
         return Ok(await _cartService.RemoveItemAsync(userId, anonymousId, productId, ct));
     }
 
+    [HttpPost("coupon")]
+    public async Task<ActionResult<CartDto>> ApplyCoupon(
+        [FromBody] ApplyCouponRequest request, [FromServices] IValidator<ApplyCouponRequest> validator, CancellationToken ct)
+    {
+        var validation = await validator.ValidateAsync(request, ct);
+        if (!validation.IsValid) return ValidationProblem(validation.ToModelState(ModelState));
+
+        var (userId, anonymousId) = ResolveIdentity();
+        return Ok(await _couponService.ApplyAsync(userId, anonymousId, request.Code, ct));
+    }
+
+    [HttpDelete("coupon")]
+    public async Task<ActionResult<CartDto>> RemoveCoupon(CancellationToken ct)
+    {
+        var (userId, anonymousId) = ResolveIdentity();
+        return Ok(await _couponService.RemoveAsync(userId, anonymousId, ct));
+    }
+
     /// <summary>Merges the anonymous cookie cart into the authenticated user's cart (call after login).</summary>
     [HttpPost("merge")]
     [Authorize]
@@ -70,7 +90,13 @@ public class CartController : ControllerBase
 
         var cart = await _cartService.MergeAsync(userId.Value, anonymousId, ct);
         if (anonymousId is not null)
-            Response.Cookies.Delete(CartCookieName, new CookieOptions { HttpOnly = true, SameSite = SameSiteMode.Lax, Path = "/" });
+            Response.Cookies.Delete(CartCookieName, new CookieOptions
+            {
+                HttpOnly = true,
+                Secure = Request.IsHttps,
+                SameSite = SameSiteMode.Lax,
+                Path = "/"
+            });
         return Ok(cart);
     }
 
@@ -90,7 +116,7 @@ public class CartController : ControllerBase
         Response.Cookies.Append(CartCookieName, id.ToString(), new CookieOptions
         {
             HttpOnly = true,
-            Secure = false,
+            Secure = Request.IsHttps,
             SameSite = SameSiteMode.Lax,
             Path = "/",
             Expires = DateTimeOffset.UtcNow.AddYears(1)

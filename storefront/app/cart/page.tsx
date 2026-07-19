@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { FormEvent, useState } from "react";
 import { useCart } from "@/components/Providers";
 import { CartItem } from "@/lib/cart";
 import { formatPrice } from "@/lib/format";
@@ -132,6 +132,104 @@ function CartRow({ item }: { item: CartItem }) {
   );
 }
 
+function CouponBox() {
+  const { cart, applyCoupon, removeCoupon } = useCart();
+  const [code, setCode] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function onApply(e: FormEvent) {
+    e.preventDefault();
+    const trimmed = code.trim();
+    if (!trimmed || busy) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await applyCoupon(trimmed);
+      setCode("");
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : "Could not apply the coupon."
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function onRemove() {
+    if (busy) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await removeCoupon();
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : "Could not remove the coupon."
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="mt-4 border-t border-slate-100 pt-4">
+      <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+        Coupon
+      </p>
+      {cart.couponCode ? (
+        <div className="mt-2 flex items-center justify-between gap-2">
+          <span className="inline-flex items-center gap-1.5 rounded-full bg-green-50 px-3 py-1 text-xs font-bold uppercase tracking-wide text-green-700 ring-1 ring-inset ring-green-200">
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              fill="none"
+              viewBox="0 0 24 24"
+              strokeWidth={2}
+              stroke="currentColor"
+              className="h-3.5 w-3.5"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="m4.5 12.75 6 6 9-13.5"
+              />
+            </svg>
+            {cart.couponCode}
+          </span>
+          <button
+            type="button"
+            onClick={onRemove}
+            disabled={busy}
+            className="text-xs font-medium text-slate-400 transition hover:text-red-500 disabled:opacity-50"
+          >
+            Remove
+          </button>
+        </div>
+      ) : (
+        <form onSubmit={onApply} className="mt-2 flex gap-2">
+          <input
+            type="text"
+            value={code}
+            onChange={(e) => setCode(e.target.value)}
+            placeholder="Coupon code"
+            aria-label="Coupon code"
+            className="w-full min-w-0 rounded-md border border-slate-300 px-3 py-2 text-sm uppercase placeholder:normal-case focus:border-orange-500 focus:outline-none focus:ring-1 focus:ring-orange-500"
+          />
+          <button
+            type="submit"
+            disabled={busy || !code.trim()}
+            className="shrink-0 rounded-md border border-blue-950 px-4 py-2 text-sm font-semibold text-blue-950 transition hover:bg-blue-950 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {busy ? "..." : "Apply"}
+          </button>
+        </form>
+      )}
+      {error && (
+        <p className="mt-1.5 text-xs font-medium text-red-600">{error}</p>
+      )}
+    </div>
+  );
+}
+
 export default function CartPage() {
   const { cart, loading } = useCart();
 
@@ -180,11 +278,31 @@ export default function CartPage() {
                   {formatPrice(cart.subtotal)}
                 </dd>
               </div>
+              {cart.discount > 0 && (
+                <div className="flex justify-between">
+                  <dt className="text-slate-500">
+                    Discount
+                    {cart.couponCode ? ` (${cart.couponCode})` : ""}
+                  </dt>
+                  <dd className="font-semibold text-green-600">
+                    −{formatPrice(cart.discount)}
+                  </dd>
+                </div>
+              )}
               <div className="flex justify-between">
                 <dt className="text-slate-500">Shipping</dt>
                 <dd className="text-slate-400">Calculated at checkout</dd>
               </div>
+              <div className="flex justify-between border-t border-slate-100 pt-2 text-base">
+                <dt className="font-bold text-blue-950">Total</dt>
+                <dd className="font-extrabold text-blue-950">
+                  {formatPrice(cart.total)}
+                </dd>
+              </div>
             </dl>
+
+            <CouponBox />
+
             <Link
               href="/checkout"
               className="mt-5 block w-full rounded-md bg-orange-500 py-3 text-center text-sm font-semibold text-white transition hover:bg-orange-600"

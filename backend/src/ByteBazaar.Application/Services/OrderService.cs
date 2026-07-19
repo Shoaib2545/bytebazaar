@@ -61,6 +61,8 @@ public class OrderService
         dto.Status = order.Status;
         dto.PaymentMethod = order.PaymentMethod;
         dto.Subtotal = order.Subtotal;
+        dto.CouponCode = order.CouponCode;
+        dto.Discount = order.Discount;
         dto.ShippingFee = order.ShippingFee;
         dto.Total = order.Total;
         dto.ShippingAddress = new ShippingAddressDto

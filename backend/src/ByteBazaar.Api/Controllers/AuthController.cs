@@ -69,6 +69,9 @@ public class AuthController : ControllerBase
         if (user is null || !await _userManager.CheckPasswordAsync(user, request.Password))
             return Unauthorized(new ProblemDetails { Status = 401, Title = "Invalid credentials" });
 
+        if (!user.IsActive)
+            return Unauthorized(new ProblemDetails { Status = 401, Title = "Account deactivated" });
+
         return Ok(await IssueTokensAsync(user));
     }
 
@@ -84,7 +87,7 @@ public class AuthController : ControllerBase
             return Unauthorized(new ProblemDetails { Status = 401, Title = "Invalid refresh token" });
 
         var user = await _userManager.FindByIdAsync(token.UserId.ToString());
-        if (user is null)
+        if (user is null || !user.IsActive)
             return Unauthorized(new ProblemDetails { Status = 401, Title = "Invalid refresh token" });
 
         token.RevokedAt = DateTime.UtcNow;
@@ -140,10 +143,10 @@ public class AuthController : ControllerBase
         };
     }
 
-    private static CookieOptions BuildCookieOptions(DateTimeOffset expires) => new()
+    private CookieOptions BuildCookieOptions(DateTimeOffset expires) => new()
     {
         HttpOnly = true,
-        Secure = false,
+        Secure = Request.IsHttps,
         SameSite = SameSiteMode.Lax,
         Path = "/",
         Expires = expires

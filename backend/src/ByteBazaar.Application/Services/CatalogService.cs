@@ -56,7 +56,7 @@ public class CatalogService
         // Materialize the lightweight product projection once; counts are computed in memory.
         var products = await _db.Products.AsNoTracking()
             .Where(p => p.Status == ProductStatus.Active && subtreeIds.Contains(p.CategoryId))
-            .Select(p => new { p.BrandId, p.Price, p.SalePrice, p.Attributes })
+            .Select(p => new { p.BrandId, p.Price, p.SalePrice, p.SaleStart, p.SaleEnd, p.Attributes })
             .ToListAsync(ct);
 
         var result = new CategoryFiltersDto();
@@ -112,7 +112,10 @@ public class CatalogService
 
         if (products.Count > 0)
         {
-            var effectivePrices = products.Select(p => p.SalePrice ?? p.Price).ToList();
+            var now = DateTime.UtcNow;
+            var effectivePrices = products
+                .Select(p => ProductPricing.EffectiveUnitPrice(p.Price, p.SalePrice, p.SaleStart, p.SaleEnd, now))
+                .ToList();
             result.PriceRange = new PriceRangeDto { Min = effectivePrices.Min(), Max = effectivePrices.Max() };
         }
 
@@ -172,7 +175,8 @@ public class CatalogService
             Slug = product.Slug,
             Description = product.Description,
             Price = product.Price,
-            SalePrice = product.SalePrice,
+            SalePrice = ProductPricing.EffectiveSalePrice(
+                product.SalePrice, product.SaleStart, product.SaleEnd, DateTime.UtcNow),
             Stock = product.Stock,
             BrandName = product.Brand?.Name,
             CategorySlug = product.Category?.Slug ?? string.Empty,
@@ -202,6 +206,18 @@ public class CatalogService
         return await PageAsync(products, query, ct);
     }
 
+    /// <summary>Featured products for the storefront home page: Active + IsFeatured, newest first.</summary>
+    public async Task<List<ProductListItemDto>> GetFeaturedAsync(int count, CancellationToken ct = default)
+    {
+        count = Math.Clamp(count <= 0 ? 8 : count, 1, 24);
+        return await _db.Products.AsNoTracking()
+            .Where(p => p.Status == ProductStatus.Active && p.IsFeatured)
+            .OrderByDescending(p => p.CreatedAt).ThenBy(p => p.Id)
+            .Take(count)
+            .Select(ProductPricing.ToProductCard(DateTime.UtcNow))
+            .ToListAsync(ct);
+    }
+
     private async Task<IQueryable<Product>> ApplyFiltersAsync(
         IQueryable<Product> products, CatalogQuery query, List<string>? filterableCodes, CancellationToken ct)
     {
@@ -214,10 +230,11 @@ public class CatalogService
             products = products.Where(p => p.BrandId != null && brandIds.Contains(p.BrandId.Value));
         }
 
+        var now = DateTime.UtcNow;
         if (query.PriceMin is not null)
-            products = products.Where(p => (p.SalePrice ?? p.Price) >= query.PriceMin.Value);
+            products = products.Where(ProductPricing.EffectivePriceAtLeast(query.PriceMin.Value, now));
         if (query.PriceMax is not null)
-            products = products.Where(p => (p.SalePrice ?? p.Price) <= query.PriceMax.Value);
+            products = products.Where(ProductPricing.EffectivePriceAtMost(query.PriceMax.Value, now));
 
         foreach (var (code, values) in query.Attributes)
         {
@@ -235,10 +252,11 @@ public class CatalogService
     private static async Task<PagedResultDto<ProductListItemDto>> PageAsync(
         IQueryable<Product> products, CatalogQuery query, CancellationToken ct)
     {
+        var now = DateTime.UtcNow;
         products = query.Sort switch
         {
-            "price_asc" => products.OrderBy(p => p.SalePrice ?? p.Price).ThenBy(p => p.Id),
-            "price_desc" => products.OrderByDescending(p => p.SalePrice ?? p.Price).ThenBy(p => p.Id),
+            "price_asc" => products.OrderBy(ProductPricing.EffectivePrice(now)).ThenBy(p => p.Id),
+            "price_desc" => products.OrderByDescending(ProductPricing.EffectivePrice(now)).ThenBy(p => p.Id),
             _ => products.OrderByDescending(p => p.CreatedAt).ThenBy(p => p.Id)
         };
 
@@ -249,17 +267,7 @@ public class CatalogService
         var items = await products
             .Skip((page - 1) * pageSize)
             .Take(pageSize)
-            .Select(p => new ProductListItemDto
-            {
-                Id = p.Id,
-                Name = p.Name,
-                Slug = p.Slug,
-                Price = p.Price,
-                SalePrice = p.SalePrice,
-                ImageUrl = p.Images.OrderBy(i => i.SortOrder).Select(i => i.Url).FirstOrDefault(),
-                BrandName = p.Brand != null ? p.Brand.Name : null,
-                Stock = p.Stock
-            })
+            .Select(ProductPricing.ToProductCard(now))
             .ToListAsync(ct);
 
         return new PagedResultDto<ProductListItemDto>

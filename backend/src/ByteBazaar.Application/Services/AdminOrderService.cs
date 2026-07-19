@@ -111,6 +111,14 @@ public class AdminOrderService
 
         await _db.ExecuteInTransactionAsync(async innerCt =>
         {
+            // Concurrency guard: atomically claim the transition (WHERE Status = expected).
+            // If another admin already transitioned this order, 0 rows match -> 409, and no
+            // stock is touched. Stock changes below run in the same transaction, so a stock
+            // failure rolls the claimed status back too.
+            if (!await _db.TryTransitionOrderStatusAsync(order.Id, from, to, innerCt))
+                throw new OrderConflictException(
+                    $"Order {order.OrderNumber} is no longer in status {from} — another user has updated it. Reload the order and try again.");
+
             if (to == OrderStatus.Confirmed)
             {
                 var failed = await _db.DecrementStockAsync(lines, innerCt);

@@ -4,6 +4,9 @@ public class CartDto
 {
     public List<CartItemDto> Items { get; set; } = new();
     public decimal Subtotal { get; set; }
+    public string? CouponCode { get; set; }
+    public decimal Discount { get; set; }
+    public decimal Total { get; set; }
     public int ItemCount { get; set; }
 }
 
@@ -28,4 +31,9 @@ public class AddCartItemRequest
 public class UpdateCartItemRequest
 {
     public int Quantity { get; set; }
+}
+
+public class ApplyCouponRequest
+{
+    public string Code { get; set; } = string.Empty;
 }

@@ -42,6 +42,10 @@ public static class DependencyInjection
         services.AddScoped<IOrderNotifier, SerilogOrderNotifier>();
         services.AddScoped<IOrderNotificationQueue, OrderNotificationQueue>();
 
+        // Identity-backed admin services (query AspNet* tables directly).
+        services.AddScoped<AdminCustomerService>();
+        services.AddScoped<StaffService>();
+
         // Hangfire is wired only when the database is reachable at startup (same guard as
         // migrations in Program.cs). When absent, OrderNotificationQueue calls the notifier inline.
         if (CanConnect(connectionString))

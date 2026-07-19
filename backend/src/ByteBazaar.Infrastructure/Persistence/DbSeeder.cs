@@ -57,7 +57,110 @@ public static class DbSeeder
         }
 
         await SeedCatalogAsync(db);
+        await SeedMarketingAsync(db);
         await SeedDemoOrdersAsync(db, customer.Id);
+    }
+
+    private static async Task SeedMarketingAsync(AppDbContext db)
+    {
+        var now = DateTime.UtcNow;
+        var firstRun = !await db.Banners.AnyAsync();
+
+        if (firstRun)
+        {
+            db.Banners.AddRange(
+                new Banner
+                {
+                    Id = Guid.NewGuid(),
+                    Title = "PC Week Sale",
+                    Subtitle = "Up to 20% off laptops, GPUs and more - this week only.",
+                    ImageUrl = "https://placehold.co/1600x500?text=PC+Week+Sale",
+                    LinkUrl = "/category/laptops",
+                    Placement = BannerPlacement.Hero,
+                    SortOrder = 1,
+                    IsActive = true,
+                    StartsAt = now.AddDays(-1),
+                    EndsAt = now.AddDays(30)
+                },
+                new Banner
+                {
+                    Id = Guid.NewGuid(),
+                    Title = "Free delivery on orders over Rs. 50,000",
+                    Subtitle = "Nationwide, straight to your door.",
+                    ImageUrl = "https://placehold.co/1600x120?text=Free+Delivery+Over+Rs.+50%2C000",
+                    LinkUrl = "/search",
+                    Placement = BannerPlacement.Strip,
+                    SortOrder = 1,
+                    IsActive = true
+                });
+        }
+
+        async Task EnsureCouponAsync(Coupon coupon)
+        {
+            if (!await db.Coupons.AnyAsync(c => c.Code == coupon.Code))
+                db.Coupons.Add(coupon);
+        }
+
+        await EnsureCouponAsync(new Coupon
+        {
+            Id = Guid.NewGuid(),
+            Code = "SAVE10",
+            Type = CouponType.Percent,
+            Value = 10m,
+            IsActive = true
+        });
+        await EnsureCouponAsync(new Coupon
+        {
+            Id = Guid.NewGuid(),
+            Code = "FLAT500",
+            Type = CouponType.Fixed,
+            Value = 500m,
+            MinOrderAmount = 50000m,
+            IsActive = true
+        });
+        await EnsureCouponAsync(new Coupon
+        {
+            Id = Guid.NewGuid(),
+            Code = "EXPIRED20",
+            Type = CouponType.Percent,
+            Value = 20m,
+            ValidFrom = now.AddDays(-60),
+            ValidTo = now.AddDays(-10),
+            IsActive = true
+        });
+
+        if (!await db.Products.AnyAsync(p => p.IsFeatured))
+        {
+            var featured = await db.Products
+                .Where(p => p.Status == ProductStatus.Active)
+                .OrderByDescending(p => p.CreatedAt)
+                .Take(4)
+                .ToListAsync();
+            foreach (var product in featured)
+                product.IsFeatured = true;
+        }
+
+        // Demo sale windows (first run only, so manual edits survive restarts): one currently
+        // active, one already expired (salePrice set but the window has passed, so the
+        // effective price falls back to the regular price).
+        if (firstRun)
+        {
+            var activeSale = await db.Products.FirstOrDefaultAsync(p => p.Slug == "asus-vivobook-15-x1504");
+            if (activeSale is not null && activeSale.SalePrice is not null)
+            {
+                activeSale.SaleStart = now.AddDays(-7);
+                activeSale.SaleEnd = now.AddDays(14);
+            }
+
+            var expiredSale = await db.Products.FirstOrDefaultAsync(p => p.Slug == "hp-k500f-wired-keyboard");
+            if (expiredSale is not null && expiredSale.SalePrice is not null)
+            {
+                expiredSale.SaleStart = now.AddDays(-45);
+                expiredSale.SaleEnd = now.AddDays(-15);
+            }
+        }
+
+        await db.SaveChangesAsync();
     }
 
     private static async Task SeedCatalogAsync(AppDbContext db)
@@ -157,7 +260,7 @@ public static class DbSeeder
                 BrandId = brand.Id,
                 Name = name,
                 Slug = slug,
-                Description = description ?? $"{name} — quality {category.Name.ToLower()} from {brand.Name}, backed by official warranty in Pakistan.",
+                Description = description ?? $"{name} - quality {category.Name.ToLower()} from {brand.Name}, backed by official warranty in Pakistan.",
                 Price = price,
                 SalePrice = salePrice,
                 SaleStart = salePrice is null ? null : createdAt,

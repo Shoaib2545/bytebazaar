@@ -94,6 +94,9 @@ export interface AdminProductListItem {
   brandName?: string | null;
   price: number;
   salePrice: number | null;
+  saleStart: string | null;
+  saleEnd: string | null;
+  isFeatured: boolean;
   stock: number;
   status: ProductStatus;
 }
@@ -107,6 +110,9 @@ export interface AdminProduct {
   description: string | null;
   price: number;
   salePrice: number | null;
+  saleStart: string | null;
+  saleEnd: string | null;
+  isFeatured: boolean;
   stock: number;
   status: ProductStatus;
   images: string[];
@@ -123,6 +129,9 @@ export interface ProductInput {
   description: string | null;
   price: number;
   salePrice: number | null;
+  saleStart: string | null;
+  saleEnd: string | null;
+  isFeatured: boolean;
   stock: number;
   status: ProductStatus;
   images: string[];
@@ -214,10 +223,173 @@ export interface LowStockProduct {
   stock: number;
 }
 
+export interface DashboardTopProduct {
+  productId: Id;
+  name: string;
+  units: number;
+  revenue: number;
+}
+
+export interface DashboardSalesDay {
+  date: string;
+  revenue: number;
+}
+
 export interface DashboardSummary {
   ordersToday: number;
   salesToday: number;
   pendingOrders: number;
   totalProducts: number;
   lowStock: LowStockProduct[];
+  topProducts: DashboardTopProduct[];
+  salesLast7Days: DashboardSalesDay[];
+}
+
+// ---------------------------------------------------------------------------
+// Coupons (M5)
+// ---------------------------------------------------------------------------
+
+export type CouponType = 'Percent' | 'Fixed';
+
+export interface Coupon {
+  id: Id;
+  code: string;
+  type: CouponType;
+  value: number;
+  minOrderAmount: number | null;
+  maxUses: number | null;
+  usedCount: number;
+  validFrom: string | null;
+  validTo: string | null;
+  isActive: boolean;
+}
+
+export interface CouponInput {
+  code: string;
+  type: CouponType;
+  value: number;
+  minOrderAmount: number | null;
+  maxUses: number | null;
+  validFrom: string | null;
+  validTo: string | null;
+  isActive: boolean;
+}
+
+// ---------------------------------------------------------------------------
+// Banners (M5)
+// ---------------------------------------------------------------------------
+
+export type BannerPlacement = 'Hero' | 'Strip';
+
+export interface Banner {
+  id: Id;
+  title: string;
+  subtitle: string | null;
+  imageUrl: string;
+  linkUrl: string | null;
+  placement: BannerPlacement;
+  sortOrder: number;
+  isActive: boolean;
+  startsAt: string | null;
+  endsAt: string | null;
+}
+
+export interface BannerInput {
+  title: string;
+  subtitle: string | null;
+  imageUrl: string;
+  linkUrl: string | null;
+  placement: BannerPlacement;
+  sortOrder: number;
+  isActive: boolean;
+  startsAt: string | null;
+  endsAt: string | null;
+}
+
+// ---------------------------------------------------------------------------
+// Customers (M5)
+// ---------------------------------------------------------------------------
+
+export interface AdminCustomerListItem {
+  id: Id;
+  fullName: string;
+  email: string;
+  phone: string | null;
+  ordersCount: number;
+  totalSpent: number;
+}
+
+export interface CustomerRecentOrder {
+  /** Order id — optional so the UI degrades gracefully if the API omits it. */
+  id?: Id;
+  orderNumber: string;
+  createdAt: string;
+  status: OrderStatus;
+  total: number;
+}
+
+export interface AdminCustomerDetail extends AdminCustomerListItem {
+  recentOrders: CustomerRecentOrder[];
+}
+
+export interface AdminCustomerListParams {
+  search?: string;
+  page?: number;
+  pageSize?: number;
+}
+
+// ---------------------------------------------------------------------------
+// Staff (M5, Admin role only)
+// ---------------------------------------------------------------------------
+
+export type StaffRole = 'Admin' | 'Staff';
+
+export interface StaffUser {
+  id: Id;
+  email: string;
+  fullName: string;
+  role: StaffRole;
+  isActive: boolean;
+}
+
+export interface StaffCreateInput {
+  email: string;
+  fullName: string;
+  password: string;
+  role: StaffRole;
+}
+
+export interface StaffUpdateInput {
+  fullName: string;
+  role: StaffRole;
+  isActive: boolean;
+}
+
+// ---------------------------------------------------------------------------
+// Reports (M5)
+// ---------------------------------------------------------------------------
+
+export interface ReportParams {
+  from?: string;
+  to?: string;
+}
+
+export interface SalesReportRow {
+  period: string;
+  orders: number;
+  revenue: number;
+}
+
+export interface CategoryReportRow {
+  categoryName: string;
+  orders: number;
+  units: number;
+  revenue: number;
+}
+
+export interface BrandReportRow {
+  brandName: string;
+  orders: number;
+  units: number;
+  revenue: number;
 }

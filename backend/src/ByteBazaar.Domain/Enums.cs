@@ -35,3 +35,15 @@ public enum PaymentMethod
 {
     COD
 }
+
+public enum CouponType
+{
+    Percent,
+    Fixed
+}
+
+public enum BannerPlacement
+{
+    Hero,
+    Strip
+}
