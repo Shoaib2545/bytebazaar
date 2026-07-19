@@ -1,0 +1,25 @@
+# .NET
+bin/
+obj/
+*.user
+.vs/
+artifacts/
+
+# Node
+node_modules/
+.next/
+dist/
+out/
+*.tsbuildinfo
+npm-debug.log*
+
+# Env / secrets
+.env
+.env.local
+.env.*.local
+appsettings.Development.local.json
+
+# OS / editors
+.DS_Store
+Thumbs.db
+.idea/

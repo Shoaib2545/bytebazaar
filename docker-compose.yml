@@ -1,0 +1,27 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: bytebazaar-postgres
+    environment:
+      POSTGRES_USER: bytebazaar
+      POSTGRES_PASSWORD: bytebazaar_dev
+      POSTGRES_DB: bytebazaar
+    ports:
+      # Host port 5433: a native Windows PostgreSQL 18 service already occupies 5432.
+      - "5433:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U bytebazaar"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    container_name: bytebazaar-redis
+    ports:
+      - "6379:6379"
+
+volumes:
+  pgdata:

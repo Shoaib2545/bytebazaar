@@ -1,0 +1,16 @@
+{
+  "name": "@bytebazaar/api-client",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Generated TypeScript types for the ByteBazaar API (OpenAPI schema via openapi-typescript).",
+  "types": "src/schema.d.ts",
+  "files": [
+    "src"
+  ],
+  "scripts": {
+    "generate": "openapi-typescript http://localhost:5080/swagger/v1/swagger.json -o src/schema.d.ts"
+  },
+  "devDependencies": {
+    "openapi-typescript": "^7.4.0"
+  }
+}
