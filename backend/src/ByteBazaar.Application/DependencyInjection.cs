@@ -22,6 +22,9 @@ public static class DependencyInjection
         services.AddScoped<ReportService>();
         services.AddScoped<WishlistService>();
         services.AddScoped<AddressService>();
+        services.AddScoped<SearchService>();
+        services.AddScoped<SearchIndexingService>();
+        services.AddScoped<RedirectService>();
         services.AddSingleton<IShippingOptionsProvider, DefaultShippingOptionsProvider>();
         services.AddValidatorsFromAssembly(typeof(DependencyInjection).Assembly);
         return services;

@@ -7,6 +7,15 @@ public class CategoryTreeDto
     public string Slug { get; set; } = string.Empty;
     public string? ImageUrl { get; set; }
     public int SortOrder { get; set; }
+
+    /// <summary>
+    /// Admin-authored SEO overrides for the category landing page. Null when the admin left them
+    /// blank — consumers fall back to templating from <see cref="Name"/>. Nullable and additive on
+    /// purpose: cached tree payloads written before these fields existed deserialize them as null.
+    /// </summary>
+    public string? MetaTitle { get; set; }
+    public string? MetaDescription { get; set; }
+
     public List<CategoryTreeDto> Children { get; set; } = new();
 }
 

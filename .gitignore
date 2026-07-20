@@ -19,6 +19,9 @@ npm-debug.log*
 .env.*.local
 appsettings.Development.local.json
 
+# Database dumps produced by scripts/backup-postgres.sh
+backups/
+
 # OS / editors
 .DS_Store
 Thumbs.db

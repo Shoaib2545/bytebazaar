@@ -1,6 +1,7 @@
 using ByteBazaar.Application.DTOs;
 using ByteBazaar.Application.Services;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.OutputCaching;
 
 namespace ByteBazaar.Api.Controllers;
 
@@ -17,6 +18,7 @@ public class ContentController : ControllerBase
 
     /// <summary>Active banners within their scheduling window (Hero + Strip placements).</summary>
     [HttpGet("banners")]
+    [OutputCache(PolicyName = CachePolicies.CatalogProducts)]
     public async Task<ActionResult<List<BannerDto>>> GetBanners(CancellationToken ct)
         => Ok(await _bannerService.GetActiveBannersAsync(ct));
 }

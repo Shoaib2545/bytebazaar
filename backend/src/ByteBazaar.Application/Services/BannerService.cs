@@ -7,15 +7,31 @@ namespace ByteBazaar.Application.Services;
 
 public class BannerService
 {
-    private readonly IAppDbContext _db;
+    /// <summary>Short TTL: banners are scheduled, so a cached list must expire near its window edges.</summary>
+    private static readonly TimeSpan ActiveBannersTtl = TimeSpan.FromMinutes(2);
 
-    public BannerService(IAppDbContext db)
+    private readonly IAppDbContext _db;
+    private readonly ICacheStore _cache;
+
+    /// <summary>Uncached construction (tests); production uses the ICacheStore overload.</summary>
+    public BannerService(IAppDbContext db) : this(db, NoOpCacheStore.Instance)
     {
-        _db = db;
     }
 
-    /// <summary>Public storefront banners: active and within their [StartsAt, EndsAt] window.</summary>
-    public async Task<List<BannerDto>> GetActiveBannersAsync(CancellationToken ct = default)
+    public BannerService(IAppDbContext db, ICacheStore cache)
+    {
+        _db = db;
+        _cache = cache;
+    }
+
+    /// <summary>
+    /// Public storefront banners: active and within their [StartsAt, EndsAt] window. Homepage hot
+    /// data — cached in Redis and evicted by every admin banner write.
+    /// </summary>
+    public Task<List<BannerDto>> GetActiveBannersAsync(CancellationToken ct = default)
+        => _cache.GetOrSetAsync(CacheKeys.HomeBanners, LoadActiveBannersAsync, ActiveBannersTtl, ct);
+
+    private async Task<List<BannerDto>> LoadActiveBannersAsync(CancellationToken ct)
     {
         var now = DateTime.UtcNow;
         return await _db.Banners.AsNoTracking()
@@ -52,6 +68,7 @@ public class BannerService
         Apply(banner, request);
         _db.Banners.Add(banner);
         await _db.SaveChangesAsync(ct);
+        await _cache.RemoveAsync(CacheKeys.HomeBanners, ct);
         return ToDto(banner);
     }
 
@@ -61,6 +78,7 @@ public class BannerService
         if (banner is null) return null;
         Apply(banner, request);
         await _db.SaveChangesAsync(ct);
+        await _cache.RemoveAsync(CacheKeys.HomeBanners, ct);
         return ToDto(banner);
     }
 
@@ -70,6 +88,7 @@ public class BannerService
         if (banner is null) return false;
         _db.Banners.Remove(banner);
         await _db.SaveChangesAsync(ct);
+        await _cache.RemoveAsync(CacheKeys.HomeBanners, ct);
         return true;
     }
 

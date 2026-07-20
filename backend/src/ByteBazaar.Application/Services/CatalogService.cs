@@ -9,14 +9,32 @@ namespace ByteBazaar.Application.Services;
 
 public class CatalogService
 {
-    private readonly IAppDbContext _db;
+    /// <summary>Hot-data TTLs. Short enough that a missed invalidation self-heals quickly.</summary>
+    private static readonly TimeSpan CategoryTreeTtl = TimeSpan.FromMinutes(10);
+    private static readonly TimeSpan FeaturedTtl = TimeSpan.FromMinutes(5);
 
-    public CatalogService(IAppDbContext db)
+    private readonly IAppDbContext _db;
+    private readonly ICacheStore _cache;
+
+    /// <summary>Uncached construction (tests); production uses the ICacheStore overload.</summary>
+    public CatalogService(IAppDbContext db) : this(db, NoOpCacheStore.Instance)
     {
-        _db = db;
     }
 
-    public async Task<List<CategoryTreeDto>> GetCategoryTreeAsync(CancellationToken ct = default)
+    public CatalogService(IAppDbContext db, ICacheStore cache)
+    {
+        _db = db;
+        _cache = cache;
+    }
+
+    /// <summary>
+    /// Category tree — the hottest read on the site (every page renders the nav). Cached in Redis
+    /// when available; admin category writes evict <see cref="CacheKeys.CategoryTree"/>.
+    /// </summary>
+    public Task<List<CategoryTreeDto>> GetCategoryTreeAsync(CancellationToken ct = default)
+        => _cache.GetOrSetAsync(CacheKeys.CategoryTree, LoadCategoryTreeAsync, CategoryTreeTtl, ct);
+
+    private async Task<List<CategoryTreeDto>> LoadCategoryTreeAsync(CancellationToken ct)
     {
         var categories = await _db.Categories.AsNoTracking()
             .Where(c => c.IsActive)
@@ -32,6 +50,8 @@ public class CatalogService
                     Slug = c.Slug,
                     ImageUrl = c.ImageUrl,
                     SortOrder = c.SortOrder,
+                    MetaTitle = c.MetaTitle,
+                    MetaDescription = c.MetaDescription,
                     Children = Build(c.Id)
                 })
                 .ToList();
@@ -206,10 +226,18 @@ public class CatalogService
         return await PageAsync(products, query, ct);
     }
 
-    /// <summary>Featured products for the storefront home page: Active + IsFeatured, newest first.</summary>
-    public async Task<List<ProductListItemDto>> GetFeaturedAsync(int count, CancellationToken ct = default)
+    /// <summary>
+    /// Featured products for the storefront home page: Active + IsFeatured, newest first.
+    /// Cached per requested count; admin product writes evict the whole homepage key set.
+    /// </summary>
+    public Task<List<ProductListItemDto>> GetFeaturedAsync(int count, CancellationToken ct = default)
     {
         count = Math.Clamp(count <= 0 ? 8 : count, 1, 24);
+        return _cache.GetOrSetAsync(CacheKeys.Featured(count), token => LoadFeaturedAsync(count, token), FeaturedTtl, ct);
+    }
+
+    private async Task<List<ProductListItemDto>> LoadFeaturedAsync(int count, CancellationToken ct)
+    {
         return await _db.Products.AsNoTracking()
             .Where(p => p.Status == ProductStatus.Active && p.IsFeatured)
             .OrderByDescending(p => p.CreatedAt).ThenBy(p => p.Id)

@@ -23,5 +23,25 @@ services:
     ports:
       - "6379:6379"
 
+  meilisearch:
+    image: getmeili/meilisearch:v1.11
+    container_name: bytebazaar-meilisearch
+    environment:
+      MEILI_MASTER_KEY: bytebazaar_dev_master_key
+      MEILI_ENV: development
+      MEILI_NO_ANALYTICS: "true"
+    ports:
+      # Host port 7701: Meilisearch's default 7700 is commonly taken by other local instances,
+      # so the API's "Meilisearch:Url" setting points at 7701 — don't "fix" it back to 7700.
+      - "7701:7700"
+    volumes:
+      - meilidata:/meili_data
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:7700/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
 volumes:
   pgdata:
+  meilidata:

@@ -9,11 +9,41 @@ public class AdminCatalogService
 {
     private readonly IAppDbContext _db;
     private readonly IStorefrontRevalidator _revalidator;
+    private readonly ICacheStore _cache;
+    private readonly IOutputCacheInvalidator _outputCache;
+    private readonly ISearchIndexQueue _searchQueue;
 
+    /// <summary>Minimal construction (tests); production uses the full overload.</summary>
     public AdminCatalogService(IAppDbContext db, IStorefrontRevalidator revalidator)
+        : this(db, revalidator, NoOpCacheStore.Instance, NoOpOutputCacheInvalidator.Instance, NoOpSearchIndexQueue.Instance)
+    {
+    }
+
+    public AdminCatalogService(
+        IAppDbContext db,
+        IStorefrontRevalidator revalidator,
+        ICacheStore cache,
+        IOutputCacheInvalidator outputCache,
+        ISearchIndexQueue searchQueue)
     {
         _db = db;
         _revalidator = revalidator;
+        _cache = cache;
+        _outputCache = outputCache;
+        _searchQueue = searchQueue;
+    }
+
+    /// <summary>
+    /// Drops every cached representation of the catalog after a write: the Redis hot-data keys and
+    /// the ASP.NET Core output-cache entries tagged <see cref="CacheTags.Catalog"/> (which cover
+    /// the filter/product-list responses keyed by their filter query params).
+    /// </summary>
+    private async Task InvalidateCatalogCachesAsync(CancellationToken ct)
+    {
+        await _cache.RemoveAsync(CacheKeys.CategoryTree, ct);
+        for (var count = 1; count <= 24; count++)
+            await _cache.RemoveAsync(CacheKeys.Featured(count), ct);
+        await _outputCache.EvictAsync(CacheTags.Catalog);
     }
 
     // ----- Categories -----
@@ -43,6 +73,7 @@ public class AdminCatalogService
         Apply(category, request);
         _db.Categories.Add(category);
         await _db.SaveChangesAsync(ct);
+        await InvalidateCatalogCachesAsync(ct);
         _revalidator.Revalidate("/", $"/category/{category.Slug}");
         return ToDto(category);
     }
@@ -54,6 +85,7 @@ public class AdminCatalogService
         var oldSlug = category.Slug;
         Apply(category, request);
         await _db.SaveChangesAsync(ct);
+        await InvalidateCatalogCachesAsync(ct);
         _revalidator.Revalidate(oldSlug == category.Slug
             ? new[] { "/", $"/category/{category.Slug}" }
             : new[] { "/", $"/category/{oldSlug}", $"/category/{category.Slug}" });
@@ -66,6 +98,7 @@ public class AdminCatalogService
         if (category is null) return false;
         _db.Categories.Remove(category);
         await _db.SaveChangesAsync(ct);
+        await InvalidateCatalogCachesAsync(ct);
         _revalidator.Revalidate("/", $"/category/{category.Slug}");
         return true;
     }
@@ -118,6 +151,7 @@ public class AdminCatalogService
         Apply(attribute, request);
         _db.AttributeDefinitions.Add(attribute);
         await _db.SaveChangesAsync(ct);
+        await InvalidateCatalogCachesAsync(ct);
         return ToDto(attribute);
     }
 
@@ -127,6 +161,7 @@ public class AdminCatalogService
         if (attribute is null) return null;
         Apply(attribute, request);
         await _db.SaveChangesAsync(ct);
+        await InvalidateCatalogCachesAsync(ct);
         return ToDto(attribute);
     }
 
@@ -136,6 +171,7 @@ public class AdminCatalogService
         if (attribute is null) return false;
         _db.AttributeDefinitions.Remove(attribute);
         await _db.SaveChangesAsync(ct);
+        await InvalidateCatalogCachesAsync(ct);
         return true;
     }
 
@@ -181,6 +217,7 @@ public class AdminCatalogService
         var brand = new Brand { Id = Guid.NewGuid(), Name = request.Name, Slug = request.Slug, LogoUrl = request.LogoUrl };
         _db.Brands.Add(brand);
         await _db.SaveChangesAsync(ct);
+        await InvalidateCatalogCachesAsync(ct);
         return new AdminBrandDto { Id = brand.Id, Name = brand.Name, Slug = brand.Slug, LogoUrl = brand.LogoUrl };
     }
 
@@ -192,6 +229,7 @@ public class AdminCatalogService
         brand.Slug = request.Slug;
         brand.LogoUrl = request.LogoUrl;
         await _db.SaveChangesAsync(ct);
+        await InvalidateCatalogCachesAsync(ct);
         return new AdminBrandDto { Id = brand.Id, Name = brand.Name, Slug = brand.Slug, LogoUrl = brand.LogoUrl };
     }
 
@@ -201,6 +239,7 @@ public class AdminCatalogService
         if (brand is null) return false;
         _db.Brands.Remove(brand);
         await _db.SaveChangesAsync(ct);
+        await InvalidateCatalogCachesAsync(ct);
         return true;
     }
 
@@ -271,6 +310,8 @@ public class AdminCatalogService
         Apply(product, request);
         _db.Products.Add(product);
         await _db.SaveChangesAsync(ct);
+        await InvalidateCatalogCachesAsync(ct);
+        await _searchQueue.EnqueueProductIndexAsync(product.Id);
         await RevalidateProductAsync(product, ct);
         return ToDto(product);
     }
@@ -290,6 +331,9 @@ public class AdminCatalogService
         // of Added. Add them explicitly so EF inserts them.
         _db.ProductImages.AddRange(product.Images);
         await _db.SaveChangesAsync(ct);
+        await InvalidateCatalogCachesAsync(ct);
+        // The indexer removes the document itself when the product is no longer Active.
+        await _searchQueue.EnqueueProductIndexAsync(product.Id);
         await RevalidateProductAsync(product, ct);
         return ToDto(product);
     }
@@ -300,6 +344,8 @@ public class AdminCatalogService
         if (product is null) return false;
         _db.Products.Remove(product);
         await _db.SaveChangesAsync(ct);
+        await InvalidateCatalogCachesAsync(ct);
+        await _searchQueue.EnqueueProductDeleteAsync(product.Id);
         await RevalidateProductAsync(product, ct);
         return true;
     }

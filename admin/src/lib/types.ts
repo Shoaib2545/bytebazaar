@@ -393,3 +393,32 @@ export interface BrandReportRow {
   units: number;
   revenue: number;
 }
+
+// ---------------------------------------------------------------------------
+// Redirects (M6)
+// ---------------------------------------------------------------------------
+
+export interface Redirect {
+  id: Id;
+  fromPath: string;
+  toPath: string;
+  isPermanent: boolean;
+  isActive: boolean;
+  createdAt: string;
+}
+
+export interface RedirectInput {
+  fromPath: string;
+  toPath: string;
+  isPermanent: boolean;
+  isActive: boolean;
+}
+
+// ---------------------------------------------------------------------------
+// Search index (M6)
+// ---------------------------------------------------------------------------
+
+/** Response of POST /api/admin/search-index/reindex — always 202 { status: "queued" }. */
+export interface ReindexResponse {
+  status: string;
+}

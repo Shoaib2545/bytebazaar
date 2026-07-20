@@ -1,5 +1,6 @@
 using ByteBazaar.Application.DTOs;
 using ByteBazaar.Application.Services;
+using Microsoft.EntityFrameworkCore;
 using Xunit;
 
 namespace ByteBazaar.Tests;
@@ -190,5 +191,42 @@ public class CatalogServiceTests
 
         var item = Assert.Single(result.Items);
         Assert.Equal("laptop-b", item.Slug);
+    }
+
+    [Fact]
+    public async Task CategoryTree_ExposesSeoMetadata_ForRootAndNestedCategories()
+    {
+        await using var db = await TestDbFactory.CreateSeededAsync();
+        var laptops = await db.Categories.FirstAsync(c => c.Id == TestDbFactory.LaptopsId);
+        laptops.MetaTitle = "Laptops in Pakistan | ByteBazaar";
+        laptops.MetaDescription = "Shop gaming and business laptops with nationwide delivery.";
+        var gpus = await db.Categories.FirstAsync(c => c.Id == TestDbFactory.GpusId);
+        gpus.MetaTitle = "Graphics Cards | ByteBazaar";
+        await db.SaveChangesAsync();
+
+        var tree = await new CatalogService(db).GetCategoryTreeAsync();
+
+        var laptopNode = tree.Single(c => c.Slug == "laptops");
+        Assert.Equal("Laptops in Pakistan | ByteBazaar", laptopNode.MetaTitle);
+        Assert.Equal("Shop gaming and business laptops with nationwide delivery.", laptopNode.MetaDescription);
+
+        // Nested nodes are projected by the same recursive Build(), so cover a child too.
+        var gpuNode = tree.Single(c => c.Slug == "components").Children.Single(c => c.Slug == "graphics-cards");
+        Assert.Equal("Graphics Cards | ByteBazaar", gpuNode.MetaTitle);
+        Assert.Null(gpuNode.MetaDescription);
+    }
+
+    [Fact]
+    public async Task CategoryTree_LeavesSeoMetadataNull_WhenTheAdminLeftItBlank()
+    {
+        await using var db = await TestDbFactory.CreateSeededAsync();
+
+        var tree = await new CatalogService(db).GetCategoryTreeAsync();
+
+        // The storefront treats null as "template the metadata from the category name", so an
+        // unset override must stay null rather than becoming "".
+        var node = tree.Single(c => c.Slug == "components");
+        Assert.Null(node.MetaTitle);
+        Assert.Null(node.MetaDescription);
     }
 }

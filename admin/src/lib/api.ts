@@ -27,6 +27,9 @@ import type {
   Paged,
   ProductInput,
   ProductListParams,
+  Redirect,
+  RedirectInput,
+  ReindexResponse,
   ReportParams,
   SalesReportRow,
   StaffCreateInput,
@@ -423,4 +426,45 @@ export async function downloadReportCsv(
   link.click();
   link.remove();
   URL.revokeObjectURL(url);
+}
+
+// ---------------------------------------------------------------------------
+// Redirects (M6)
+// ---------------------------------------------------------------------------
+
+export async function listRedirects(): Promise<Redirect[]> {
+  const res = await api.get<Redirect[]>('/api/admin/redirects');
+  return res.data;
+}
+
+export async function getRedirect(id: Id): Promise<Redirect> {
+  const res = await api.get<Redirect>(`/api/admin/redirects/${id}`);
+  return res.data;
+}
+
+export async function createRedirect(input: RedirectInput): Promise<Redirect> {
+  const res = await api.post<Redirect>('/api/admin/redirects', input);
+  return res.data;
+}
+
+export async function updateRedirect(id: Id, input: RedirectInput): Promise<Redirect> {
+  const res = await api.put<Redirect>(`/api/admin/redirects/${id}`, input);
+  return res.data;
+}
+
+export async function deleteRedirect(id: Id): Promise<void> {
+  await api.delete(`/api/admin/redirects/${id}`);
+}
+
+// ---------------------------------------------------------------------------
+// Search index (M6)
+// ---------------------------------------------------------------------------
+
+/**
+ * Queues a full search-index rebuild. The API replies 202 immediately — the
+ * rebuild itself runs in the background, so callers must not report "done".
+ */
+export async function reindexSearchIndex(): Promise<ReindexResponse> {
+  const res = await api.post<ReindexResponse>('/api/admin/search-index/reindex');
+  return res.data;
 }

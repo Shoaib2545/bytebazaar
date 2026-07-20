@@ -8,6 +8,7 @@ import {
   LogoutOutlined,
   PercentageOutlined,
   PictureOutlined,
+  RetweetOutlined,
   SafetyCertificateOutlined,
   ShopOutlined,
   ShoppingCartOutlined,
@@ -39,6 +40,7 @@ export default function AdminLayout() {
       { key: '/banners', icon: <PictureOutlined />, label: 'Banners' },
       { key: '/customers', icon: <TeamOutlined />, label: 'Customers' },
       { key: '/reports', icon: <BarChartOutlined />, label: 'Reports' },
+      { key: '/redirects', icon: <RetweetOutlined />, label: 'Redirects' },
       ...(isAdmin
         ? [{ key: '/staff', icon: <SafetyCertificateOutlined />, label: 'Staff' }]
         : []),

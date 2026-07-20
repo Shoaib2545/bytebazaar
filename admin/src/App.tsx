@@ -16,6 +16,7 @@ import BannersPage from './pages/BannersPage.tsx';
 import CustomersPage from './pages/CustomersPage.tsx';
 import StaffPage from './pages/StaffPage.tsx';
 import ReportsPage from './pages/ReportsPage.tsx';
+import RedirectsPage from './pages/RedirectsPage.tsx';
 
 export default function App() {
   return (
@@ -36,6 +37,7 @@ export default function App() {
           <Route path="/banners" element={<BannersPage />} />
           <Route path="/customers" element={<CustomersPage />} />
           <Route path="/reports" element={<ReportsPage />} />
+          <Route path="/redirects" element={<RedirectsPage />} />
           <Route element={<RequireAdmin />}>
             <Route path="/staff" element={<StaffPage />} />
           </Route>

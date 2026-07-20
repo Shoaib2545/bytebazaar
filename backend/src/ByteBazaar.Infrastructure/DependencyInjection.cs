@@ -1,7 +1,9 @@
 using ByteBazaar.Application.Abstractions;
+using ByteBazaar.Infrastructure.Caching;
 using ByteBazaar.Infrastructure.Identity;
 using ByteBazaar.Infrastructure.Notifications;
 using ByteBazaar.Infrastructure.Persistence;
+using ByteBazaar.Infrastructure.Search;
 using ByteBazaar.Infrastructure.Services;
 using Hangfire;
 using Hangfire.PostgreSql;
@@ -46,6 +48,9 @@ public static class DependencyInjection
         services.AddScoped<AdminCustomerService>();
         services.AddScoped<StaffService>();
 
+        AddCaching(services, configuration);
+        AddSearch(services, configuration);
+
         // Hangfire is wired only when the database is reachable at startup (same guard as
         // migrations in Program.cs). When absent, OrderNotificationQueue calls the notifier inline.
         if (CanConnect(connectionString))
@@ -59,6 +64,49 @@ public static class DependencyInjection
         }
 
         return services;
+    }
+
+    /// <summary>
+    /// Redis-backed hot-data cache when a "Redis" connection string is configured, in-process
+    /// otherwise. <see cref="DistributedCacheStore"/> additionally falls back at runtime, so a
+    /// Redis container that dies after startup does not take the API with it.
+    /// </summary>
+    private static void AddCaching(IServiceCollection services, IConfiguration configuration)
+    {
+        var redis = configuration.GetConnectionString("Redis");
+        services.AddMemoryCache();
+
+        if (!string.IsNullOrWhiteSpace(redis))
+        {
+            services.AddStackExchangeRedisCache(options =>
+            {
+                options.Configuration = redis;
+                options.InstanceName = "bytebazaar:";
+            });
+        }
+        else
+        {
+            services.AddDistributedMemoryCache();
+        }
+
+        services.AddSingleton<ICacheStore, DistributedCacheStore>();
+    }
+
+    /// <summary>
+    /// Meilisearch client + Hangfire-backed re-indexing. Everything here is best-effort: with no
+    /// "Meilisearch:Url" configured (or the server down) search silently uses Postgres.
+    /// </summary>
+    private static void AddSearch(IServiceCollection services, IConfiguration configuration)
+    {
+        var section = configuration.GetSection(MeilisearchOptions.SectionName);
+        services.Configure<MeilisearchOptions>(section);
+
+        var options = section.Get<MeilisearchOptions>() ?? new MeilisearchOptions();
+        services.AddHttpClient(MeilisearchSearchIndex.HttpClientName, client =>
+            client.Timeout = TimeSpan.FromSeconds(Math.Max(1, options.TimeoutSeconds)));
+
+        services.AddSingleton<ISearchIndex, MeilisearchSearchIndex>();
+        services.AddScoped<ISearchIndexQueue, SearchIndexQueue>();
     }
 
     private static bool CanConnect(string? connectionString)

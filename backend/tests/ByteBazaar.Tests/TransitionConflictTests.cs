@@ -110,6 +110,7 @@ public class TransitionConflictTests
         public DbSet<WishlistItem> WishlistItems => _inner.WishlistItems;
         public DbSet<Coupon> Coupons => _inner.Coupons;
         public DbSet<Banner> Banners => _inner.Banners;
+        public DbSet<Redirect> Redirects => _inner.Redirects;
 
         public Expression<Func<Product, bool>> BuildAttributeFilter(string code, IReadOnlyList<string> values)
             => _inner.BuildAttributeFilter(code, values);

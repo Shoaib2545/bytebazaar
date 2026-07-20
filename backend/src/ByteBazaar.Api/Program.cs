@@ -1,7 +1,9 @@
 using System.Text;
 using System.Text.Json.Serialization;
+using ByteBazaar.Api;
 using ByteBazaar.Api.Middleware;
 using ByteBazaar.Api.Services;
+using ByteBazaar.Application.Abstractions;
 using Hangfire;
 using ByteBazaar.Application;
 using ByteBazaar.Infrastructure;
@@ -28,6 +30,10 @@ try
     builder.Services.AddApplication();
     builder.Services.AddInfrastructure(builder.Configuration);
     builder.Services.AddScoped<JwtTokenService>();
+
+    // Output caching for the heavy catalog/filter endpoints; admin catalog writes evict by tag.
+    builder.Services.AddOutputCache(CachePolicies.Configure);
+    builder.Services.AddSingleton<IOutputCacheInvalidator, OutputCacheInvalidator>();
 
     builder.Services.AddControllers().AddJsonOptions(options =>
         options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter()));
@@ -87,6 +93,8 @@ try
     app.UseCors("Frontends");
     app.UseAuthentication();
     app.UseAuthorization();
+    // After authentication so the policies can skip caching authenticated requests.
+    app.UseOutputCache();
 
     // Hangfire is registered only when the DB was reachable at startup (see AddInfrastructure).
     if (app.Environment.IsDevelopment() && app.Services.GetService<Hangfire.JobStorage>() is not null)
@@ -106,6 +114,17 @@ try
         catch (Exception ex)
         {
             Log.Warning(ex, "Database is not reachable; skipping migration and seeding. The API will start anyway.");
+        }
+
+        try
+        {
+            // Best-effort: brings a fresh Meilisearch container in line with the seeded catalog.
+            // Degrades to a no-op when Meilisearch is unconfigured or unreachable.
+            await scope.ServiceProvider.GetRequiredService<ISearchIndexQueue>().EnqueueFullReindexAsync();
+        }
+        catch (Exception ex)
+        {
+            Log.Warning(ex, "Could not queue the startup search re-index. The API will start anyway.");
         }
     }
 

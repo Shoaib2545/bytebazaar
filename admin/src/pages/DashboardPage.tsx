@@ -1,17 +1,68 @@
+import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Card, Col, Row, Statistic, Table, Typography } from 'antd';
+import { Alert, App, Button, Card, Col, Popconfirm, Row, Space, Statistic, Table, Typography } from 'antd';
 import {
   ClockCircleOutlined,
   DollarOutlined,
+  ReloadOutlined,
   ShopOutlined,
   ShoppingCartOutlined,
 } from '@ant-design/icons';
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery } from '@tanstack/react-query';
 import type { ColumnsType } from 'antd/es/table';
 import dayjs from 'dayjs';
-import { getDashboardSummary } from '../lib/api.ts';
+import { getDashboardSummary, reindexSearchIndex } from '../lib/api.ts';
+import { extractProblemMessage } from '../lib/errors.ts';
 import { formatRs } from '../lib/orders.ts';
 import type { DashboardTopProduct, LowStockProduct } from '../lib/types.ts';
+
+/**
+ * "Rebuild search index" control. The API answers 202 immediately and does the
+ * work in the background, so this deliberately reports "queued", never "done".
+ */
+function SearchIndexCard() {
+  const { message } = App.useApp();
+  const [queuedAt, setQueuedAt] = useState<string | null>(null);
+
+  const reindexMutation = useMutation({
+    mutationFn: reindexSearchIndex,
+    onSuccess: () => {
+      setQueuedAt(dayjs().format('DD MMM YYYY, HH:mm'));
+      message.info('Rebuild queued — it will run in the background.');
+    },
+    onError: (error: unknown) =>
+      message.error(extractProblemMessage(error, 'Failed to queue the search index rebuild')),
+  });
+
+  return (
+    <Card title="Search index">
+      <Space direction="vertical" size="middle" style={{ width: '100%' }}>
+        <Typography.Text type="secondary">
+          Rebuilds the storefront search index from the current catalog. Useful after a bulk import
+          or if search results look stale.
+        </Typography.Text>
+        {queuedAt && (
+          <Alert
+            type="info"
+            showIcon
+            message={`Rebuild queued at ${queuedAt}`}
+            description="The job runs in the background — it is not finished yet. Search results will catch up shortly; you can safely leave this page."
+          />
+        )}
+        <Popconfirm
+          title="Rebuild search index"
+          description="This queues a full rebuild in the background. Continue?"
+          okText="Queue rebuild"
+          onConfirm={() => reindexMutation.mutate()}
+        >
+          <Button icon={<ReloadOutlined />} loading={reindexMutation.isPending}>
+            Rebuild search index
+          </Button>
+        </Popconfirm>
+      </Space>
+    </Card>
+  );
+}
 
 /** Simple CSS mini bar chart for the last-7-days revenue. */
 function SalesMiniBars({ data }: { data: { date: string; revenue: number }[] }) {
@@ -185,6 +236,11 @@ export default function DashboardPage() {
           locale={{ emptyText: 'No low-stock products' }}
         />
       </Card>
+      <Row gutter={[16, 16]} style={{ marginTop: 16 }}>
+        <Col xs={24} lg={12}>
+          <SearchIndexCard />
+        </Col>
+      </Row>
     </div>
   );
 }

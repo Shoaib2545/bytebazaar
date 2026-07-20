@@ -21,6 +21,7 @@ public interface IAppDbContext
     DbSet<WishlistItem> WishlistItems { get; }
     DbSet<Coupon> Coupons { get; }
     DbSet<Banner> Banners { get; }
+    DbSet<Redirect> Redirects { get; }
 
     /// <summary>
     /// Builds a provider-appropriate predicate matching products whose Attributes dictionary

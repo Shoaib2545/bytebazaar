@@ -32,6 +32,7 @@ public class AppDbContext : IdentityDbContext<AppUser, IdentityRole<Guid>, Guid>
     public DbSet<WishlistItem> WishlistItems => Set<WishlistItem>();
     public DbSet<Coupon> Coupons => Set<Coupon>();
     public DbSet<Banner> Banners => Set<Banner>();
+    public DbSet<Redirect> Redirects => Set<Redirect>();
 
     public async Task ExecuteInTransactionAsync(Func<CancellationToken, Task> operation, CancellationToken cancellationToken = default)
     {
@@ -355,6 +356,16 @@ public class AppDbContext : IdentityDbContext<AppUser, IdentityRole<Guid>, Guid>
             e.Property(b => b.ImageUrl).HasMaxLength(500).IsRequired();
             e.Property(b => b.LinkUrl).HasMaxLength(500);
             e.HasIndex(b => new { b.Placement, b.SortOrder });
+        });
+
+        builder.Entity<Redirect>(e =>
+        {
+            e.ToTable("Redirects");
+            e.Property(r => r.FromPath).HasMaxLength(500).IsRequired();
+            e.Property(r => r.ToPath).HasMaxLength(500).IsRequired();
+            // FromPath is normalized (lowercased, no trailing slash) before it is written, so a
+            // plain unique index is enough to guarantee one rule per source path.
+            e.HasIndex(r => r.FromPath).IsUnique();
         });
 
         builder.Entity<Cart>(e =>
