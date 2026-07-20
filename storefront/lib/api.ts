@@ -1,6 +1,12 @@
 // Server-side typed fetch helpers for the ByteBazaar public catalog API.
 // Every helper tolerates the API being down and returns a safe empty fallback.
 
+import { cache } from "react";
+import {
+  EMPTY_SEARCH_RESULTS,
+  type SearchResults,
+} from "./search";
+
 const API_BASE =
   process.env.API_URL ||
   process.env.NEXT_PUBLIC_API_URL ||
@@ -15,6 +21,13 @@ export interface CategoryNode {
   imageUrl: string | null;
   sortOrder: number;
   children: CategoryNode[];
+  /**
+   * Admin-authored SEO overrides. Optional on purpose: older API builds omit
+   * these fields entirely, so every consumer must fall back to the templated
+   * title/description when they are absent or null.
+   */
+  metaTitle?: string | null;
+  metaDescription?: string | null;
 }
 
 export type AttributeType =
@@ -142,9 +155,17 @@ async function apiGet<T>(path: string, fallback: T): Promise<T> {
 
 // ---------- public endpoint helpers ----------
 
-export async function getCategoryTree(): Promise<CategoryNode[]> {
+/**
+ * The full category tree.
+ *
+ * Wrapped in `React.cache` for request-scoped dedupe: the root layout and the
+ * category page both need the tree, and `apiGet` uses `cache: "no-store"` so
+ * Next's own fetch memoization does not apply. `cache()` collapses those into
+ * a single upstream call per request while keeping the data per-request fresh.
+ */
+export const getCategoryTree = cache(async (): Promise<CategoryNode[]> => {
   return apiGet<CategoryNode[]>("/api/catalog/categories/tree", []);
-}
+});
 
 export async function getCategoryFilters(
   slug: string
@@ -191,12 +212,23 @@ export async function getFeaturedProducts(
   return apiGet<ProductListItem[]>(`/api/catalog/featured?count=${count}`, []);
 }
 
-export async function searchProducts(
+/**
+ * Full search results from the dedicated search service (Meilisearch when it
+ * is reachable, Postgres otherwise — see `source` on the response).
+ *
+ * `params` is passed straight through and accepts the same conventions as the
+ * category endpoints: page, pageSize, sort (price_asc | price_desc |
+ * relevance), brand=slug,slug, price=min-max, plus any attribute code.
+ */
+export async function searchCatalog(
   q: string,
   params: Record<string, string> = {}
-): Promise<PagedProducts> {
+): Promise<SearchResults> {
   const search = new URLSearchParams({ q, ...params }).toString();
-  return apiGet<PagedProducts>(`/api/catalog/search?${search}`, EMPTY_PAGED);
+  return apiGet<SearchResults>(`/api/search?${search}`, {
+    ...EMPTY_SEARCH_RESULTS,
+    query: q,
+  });
 }
 
 // ---------- convenience ----------

@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { FormEvent, useEffect, useRef, useState } from "react";
 import { useCart } from "@/components/Providers";
 import { Address, getAddresses } from "@/lib/account";
+import { trackCheckoutStarted, trackPurchase } from "@/lib/analytics";
 import { useAuth } from "@/lib/auth-client";
 import {
   ShippingOption,
@@ -68,6 +69,20 @@ export default function CheckoutPage() {
   const [busy, setBusy] = useState(false);
   const [placed, setPlaced] = useState(false);
   const prefilledRef = useRef(false);
+  const checkoutTrackedRef = useRef(false);
+
+  // Funnel step 3 — fire once, after the cart has actually loaded and is
+  // non-empty (the page briefly renders with an empty cart while loading).
+  useEffect(() => {
+    if (checkoutTrackedRef.current || cartLoading) return;
+    if (cart.items.length === 0) return;
+    checkoutTrackedRef.current = true;
+    trackCheckoutStarted({
+      itemCount: cart.itemCount,
+      value: cart.total,
+      couponCode: cart.couponCode,
+    });
+  }, [cartLoading, cart.items.length, cart.itemCount, cart.total, cart.couponCode]);
 
   // Shipping options
   useEffect(() => {
@@ -141,6 +156,8 @@ export default function CheckoutPage() {
     }
 
     setBusy(true);
+    // Snapshot before the server clears the cart.
+    const purchasedItemCount = cart.itemCount;
     try {
       const result = await placeOrder({
         fullName: fullName.trim(),
@@ -161,6 +178,15 @@ export default function CheckoutPage() {
         email: email.trim(),
         fullName: fullName.trim(),
         placedAt: new Date().toISOString(),
+        couponCode: result.couponCode ?? null,
+        discount: result.discount ?? 0,
+      });
+      // Funnel step 4 — sent via sendBeacon so it survives the navigation.
+      trackPurchase({
+        orderNumber: result.orderNumber,
+        value: result.total,
+        itemCount: purchasedItemCount,
+        paymentMethod: "COD",
         couponCode: result.couponCode ?? null,
         discount: result.discount ?? 0,
       });

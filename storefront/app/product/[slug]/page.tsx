@@ -3,8 +3,10 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getProduct } from "@/lib/api";
 import { formatPrice } from "@/lib/format";
+import { SITE_NAME, absoluteUrl, breadcrumbJsonLd } from "@/lib/seo";
 import ProductGallery from "@/components/ProductGallery";
 import ProductActions from "@/components/ProductActions";
+import ProductViewTracker from "@/components/ProductViewTracker";
 
 export const dynamic = "force-dynamic";
 
@@ -15,13 +17,44 @@ interface Props {
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { slug } = await params;
   const product = await getProduct(slug);
-  if (!product) return { title: "Product not found" };
+
+  // The API may be unreachable (force-dynamic + graceful fallbacks) — never
+  // let a missing product leak a half-built canonical into the index.
+  if (!product) {
+    return { title: "Product not found", robots: { index: false, follow: false } };
+  }
+
+  const title = product.metaTitle || product.name;
+  const description =
+    product.metaDescription ||
+    product.description?.slice(0, 160) ||
+    `Buy ${product.name} at ${SITE_NAME} — genuine stock, best PKR price, nationwide delivery.`;
+  const canonical = absoluteUrl(`/product/${product.slug}`);
+
   return {
-    title: product.metaTitle || product.name,
-    description:
-      product.metaDescription ||
-      product.description?.slice(0, 160) ||
-      `Buy ${product.name} at ByteBazaar.`,
+    title,
+    description,
+    alternates: { canonical },
+    robots: { index: true, follow: true },
+    openGraph: {
+      // "product" isn't in Next's OpenGraphType union; "website" is the
+      // closest valid value, and the schema.org Product JSON-LD below is what
+      // search engines actually read for commerce data.
+      type: "website",
+      title,
+      description,
+      url: canonical,
+      siteName: SITE_NAME,
+      images: product.images.length
+        ? product.images.slice(0, 4).map((url) => ({ url, alt: product.name }))
+        : undefined,
+    },
+    twitter: {
+      card: "summary_large_image",
+      title,
+      description,
+      images: product.images.slice(0, 1),
+    },
   };
 }
 
@@ -35,15 +68,26 @@ export default async function ProductPage({ params }: Props) {
   const effectivePrice = onSale ? product.salePrice! : product.price;
   const inStock = product.stock > 0;
 
-  const jsonLd = {
+  const canonical = absoluteUrl(`/product/${product.slug}`);
+
+  const productJsonLd = {
     "@context": "https://schema.org",
     "@type": "Product",
     name: product.name,
     description: product.metaDescription || product.description || undefined,
     image: product.images,
     sku: product.id,
+    url: canonical,
+    category: product.categoryName ?? undefined,
     brand: product.brandName
       ? { "@type": "Brand", name: product.brandName }
+      : undefined,
+    additionalProperty: product.attributes.length
+      ? product.attributes.map((a) => ({
+          "@type": "PropertyValue",
+          name: a.name,
+          value: a.value,
+        }))
       : undefined,
     offers: {
       "@type": "Offer",
@@ -52,15 +96,44 @@ export default async function ProductPage({ params }: Props) {
       availability: inStock
         ? "https://schema.org/InStock"
         : "https://schema.org/OutOfStock",
-      url: `/product/${product.slug}`,
+      itemCondition: "https://schema.org/NewCondition",
+      // Rich results require an absolute offer URL.
+      url: canonical,
+      seller: { "@type": "Organization", name: SITE_NAME },
     },
   };
+
+  const breadcrumbs = [{ name: "Home", path: "/" }];
+  if (product.categorySlug) {
+    breadcrumbs.push({
+      name: product.categoryName ?? product.categorySlug,
+      path: `/category/${product.categorySlug}`,
+    });
+  }
+  breadcrumbs.push({ name: product.name, path: `/product/${product.slug}` });
 
   return (
     <div className="mx-auto max-w-7xl px-4 py-6">
       <script
         type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(productJsonLd) }}
+      />
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{
+          __html: JSON.stringify(breadcrumbJsonLd(breadcrumbs)),
+        }}
+      />
+      {/* Funnel step 1 — no-op unless NEXT_PUBLIC_POSTHOG_KEY is set. */}
+      <ProductViewTracker
+        product={{
+          id: product.id,
+          name: product.name,
+          slug: product.slug,
+          price: effectivePrice,
+          brand: product.brandName,
+          category: product.categoryName,
+        }}
       />
 
       <nav className="mb-4 text-xs text-slate-500" aria-label="Breadcrumb">
@@ -125,7 +198,12 @@ export default async function ProductPage({ params }: Props) {
                 </>
               )}
             </div>
-            <ProductActions productId={product.id} stock={product.stock} />
+            <ProductActions
+              productId={product.id}
+              productName={product.name}
+              price={effectivePrice}
+              stock={product.stock}
+            />
           </div>
 
           {product.attributes.length > 0 && (

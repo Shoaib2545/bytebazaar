@@ -1,6 +1,10 @@
 "use client";
 
 import { useState } from "react";
+import RemoteImage from "./RemoteImage";
+
+// Gallery is full-width on mobile and half of a max-w-7xl (1280px) grid on lg+.
+const MAIN_SIZES = "(max-width: 1024px) 100vw, 620px";
 
 export default function ProductGallery({
   images,
@@ -14,13 +18,15 @@ export default function ProductGallery({
 
   return (
     <div>
-      <div className="flex aspect-square items-center justify-center overflow-hidden rounded-lg border border-slate-200 bg-white p-6">
+      <div className="relative flex aspect-square items-center justify-center overflow-hidden rounded-lg border border-slate-200 bg-white p-6">
         {main ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
+          <RemoteImage
             src={main}
             alt={name}
-            className="h-full w-full object-contain"
+            sizes={MAIN_SIZES}
+            // The product hero is the LCP element on the product page.
+            eager
+            className="object-contain p-6"
           />
         ) : (
           <div className="flex h-full w-full items-center justify-center text-slate-300">
@@ -48,19 +54,18 @@ export default function ProductGallery({
             <button
               key={`${img}-${i}`}
               onClick={() => setActive(i)}
-              className={`h-16 w-16 shrink-0 overflow-hidden rounded border-2 bg-white p-1 transition ${
+              className={`relative h-16 w-16 shrink-0 overflow-hidden rounded border-2 bg-white p-1 transition ${
                 i === active
                   ? "border-orange-500"
                   : "border-slate-200 hover:border-slate-400"
               }`}
               aria-label={`View image ${i + 1} of ${name}`}
             >
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
+              <RemoteImage
                 src={img}
                 alt=""
-                className="h-full w-full object-contain"
-                loading="lazy"
+                sizes="64px"
+                className="object-contain p-1"
               />
             </button>
           ))}

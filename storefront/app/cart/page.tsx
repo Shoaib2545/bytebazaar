@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { FormEvent, useState } from "react";
 import { useCart } from "@/components/Providers";
+import RemoteImage from "@/components/RemoteImage";
 import { CartItem } from "@/lib/cart";
 import { formatPrice } from "@/lib/format";
 
@@ -40,14 +41,14 @@ function CartRow({ item }: { item: CartItem }) {
     <div className="flex gap-4 border-b border-slate-100 py-4 last:border-b-0">
       <Link
         href={`/product/${item.slug}`}
-        className="flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-md border border-slate-100 bg-slate-50"
+        className="relative flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-md border border-slate-100 bg-slate-50"
       >
         {item.imageUrl ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
+          <RemoteImage
             src={item.imageUrl}
             alt={item.name}
-            className="h-full w-full object-contain p-1"
+            sizes="80px"
+            className="object-contain p-1"
           />
         ) : (
           <span className="text-xs text-slate-300">No image</span>

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { trackAddToCart } from "@/lib/analytics";
 import { useCart } from "./Providers";
 
 interface Props {
@@ -10,6 +11,10 @@ interface Props {
   /** Smaller styling for product cards. */
   compact?: boolean;
   className?: string;
+  /** Analytics-only metadata (funnel step 2). Safe to omit. */
+  productName?: string;
+  price?: number;
+  source?: "product_page" | "product_card";
 }
 
 /**
@@ -23,6 +28,9 @@ export default function AddToCartButton({
   quantity = 1,
   compact = false,
   className = "",
+  productName,
+  price,
+  source = "product_card",
 }: Props) {
   const { addItem } = useCart();
   const [busy, setBusy] = useState(false);
@@ -47,6 +55,12 @@ export default function AddToCartButton({
     setError(null);
     try {
       await addItem(productId, quantity);
+      // Funnel step 2 — only on a confirmed success, never on a failed add.
+      trackAddToCart(
+        { id: productId, name: productName, price },
+        quantity,
+        source
+      );
       setAdded(true);
       if (timer.current) clearTimeout(timer.current);
       timer.current = setTimeout(() => setAdded(false), 1800);

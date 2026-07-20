@@ -7,10 +7,18 @@ import WishlistButton from "./WishlistButton";
 interface Props {
   productId: string;
   stock: number;
+  /** Analytics-only metadata forwarded to the add-to-cart event. */
+  productName?: string;
+  price?: number;
 }
 
 /** Quantity stepper + add-to-cart + wishlist heart for the product page. */
-export default function ProductActions({ productId, stock }: Props) {
+export default function ProductActions({
+  productId,
+  stock,
+  productName,
+  price,
+}: Props) {
   const [quantity, setQuantity] = useState(1);
   const inStock = stock > 0;
   const max = Math.max(stock, 1);
@@ -54,6 +62,9 @@ export default function ProductActions({ productId, stock }: Props) {
       <div className="flex items-start gap-3">
         <AddToCartButton
           productId={productId}
+          productName={productName}
+          price={price}
+          source="product_page"
           stock={stock}
           quantity={quantity}
           className="flex-1"

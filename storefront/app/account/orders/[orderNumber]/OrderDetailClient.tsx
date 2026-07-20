@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import OrderStatusBadge from "@/components/OrderStatusBadge";
+import RemoteImage from "@/components/RemoteImage";
 import { OrderDetail, getOrder } from "@/lib/account";
 import { formatPrice } from "@/lib/format";
 
@@ -101,14 +102,14 @@ export default function OrderDetailClient({
                 >
                   <Link
                     href={`/product/${item.slug}`}
-                    className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-md border border-slate-100 bg-slate-50"
+                    className="relative flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-md border border-slate-100 bg-slate-50"
                   >
                     {item.imageUrl ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img
+                      <RemoteImage
                         src={item.imageUrl}
                         alt={item.name}
-                        className="h-full w-full object-contain p-1"
+                        sizes="64px"
+                        className="object-contain p-1"
                       />
                     ) : (
                       <span className="text-[10px] text-slate-300">No image</span>

@@ -2,9 +2,24 @@ import Link from "next/link";
 import { ProductListItem } from "@/lib/api";
 import { formatPrice } from "@/lib/format";
 import AddToCartButton from "./AddToCartButton";
+import RemoteImage from "./RemoteImage";
 import WishlistButton from "./WishlistButton";
 
-export default function ProductCard({ product }: { product: ProductListItem }) {
+/**
+ * Card grids are 2-up on mobile, 3-up on sm/xl and 4-up on lg+ inside a
+ * max-w-7xl (1280px) container, so ~50vw down to ~300px.
+ */
+const CARD_IMAGE_SIZES =
+  "(max-width: 640px) 50vw, (max-width: 1280px) 33vw, 300px";
+
+export default function ProductCard({
+  product,
+  /** Set on the first row of an above-the-fold grid so the LCP image is eager. */
+  eager = false,
+}: {
+  product: ProductListItem;
+  eager?: boolean;
+}) {
   const onSale =
     product.salePrice != null && product.salePrice < product.price;
   const outOfStock = product.stock <= 0;
@@ -31,16 +46,17 @@ export default function ProductCard({ product }: { product: ProductListItem }) {
         href={`/product/${product.slug}`}
         className="flex flex-1 flex-col"
       >
-        <div className="flex aspect-square items-center justify-center overflow-hidden bg-slate-50 p-4">
+        {/* aspect-square reserves the box before the image loads -> no CLS */}
+        <div className="relative flex aspect-square items-center justify-center overflow-hidden bg-slate-50 p-4">
           {product.imageUrl ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
+            <RemoteImage
               src={product.imageUrl}
               alt={product.name}
-              className={`h-full w-full object-contain transition duration-200 group-hover:scale-105 ${
+              sizes={CARD_IMAGE_SIZES}
+              eager={eager}
+              className={`object-contain p-4 transition duration-200 group-hover:scale-105 ${
                 outOfStock ? "opacity-50 grayscale" : ""
               }`}
-              loading="lazy"
             />
           ) : (
             <div className="flex h-full w-full items-center justify-center text-slate-300">
@@ -91,7 +107,14 @@ export default function ProductCard({ product }: { product: ProductListItem }) {
       </Link>
 
       <div className="p-3 pt-1">
-        <AddToCartButton productId={product.id} stock={product.stock} compact />
+        <AddToCartButton
+          productId={product.id}
+          productName={product.name}
+          price={product.salePrice ?? product.price}
+          source="product_card"
+          stock={product.stock}
+          compact
+        />
       </div>
     </div>
   );

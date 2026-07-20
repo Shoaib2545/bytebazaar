@@ -6,18 +6,31 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import type { Banner } from "@/lib/api";
+import RemoteImage from "./RemoteImage";
 
 const ROTATE_MS = 5000;
 
-function SlideContent({ banner }: { banner: Banner }) {
+// The hero spans the full max-w-7xl (1280px) container.
+const HERO_SIZES = "(max-width: 1280px) 100vw, 1280px";
+
+function SlideContent({
+  banner,
+  eager,
+}: {
+  banner: Banner;
+  eager: boolean;
+}) {
   return (
     <>
       {banner.imageUrl && (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img
+        <RemoteImage
           src={banner.imageUrl}
           alt={banner.title}
-          className="absolute inset-0 h-full w-full object-cover"
+          sizes={HERO_SIZES}
+          // Only the first slide is the LCP candidate; the rest lazy-load so
+          // they don't compete for bandwidth during initial paint.
+          eager={eager}
+          className="object-cover"
         />
       )}
       {/* Darken so overlay text stays readable over any image */}
@@ -79,10 +92,10 @@ export default function HeroCarousel({ banners }: { banners: Banner[] }) {
           >
             {banner.linkUrl ? (
               <Link href={banner.linkUrl} className="block h-full w-full">
-                <SlideContent banner={banner} />
+                <SlideContent banner={banner} eager={i === 0} />
               </Link>
             ) : (
-              <SlideContent banner={banner} />
+              <SlideContent banner={banner} eager={i === 0} />
             )}
           </div>
         );

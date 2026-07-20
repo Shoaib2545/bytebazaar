@@ -8,6 +8,7 @@ import {
 } from "@/lib/api";
 import HeroCarousel from "@/components/HeroCarousel";
 import ProductCard from "@/components/ProductCard";
+import RemoteImage from "@/components/RemoteImage";
 
 export const dynamic = "force-dynamic";
 
@@ -77,12 +78,11 @@ export default async function HomePage() {
             const inner = (
               <>
                 {banner.imageUrl && (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
+                  <RemoteImage
                     src={banner.imageUrl}
                     alt={banner.title}
-                    className="absolute inset-0 h-full w-full object-cover"
-                    loading="lazy"
+                    sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 420px"
+                    className="object-cover"
                   />
                 )}
                 <div className="absolute inset-0 bg-blue-950/60" />
@@ -124,14 +124,13 @@ export default async function HomePage() {
                 href={`/category/${cat.slug}`}
                 className="group flex flex-col items-center gap-3 rounded-lg border border-slate-200 bg-white p-5 text-center transition hover:border-orange-400 hover:shadow-md"
               >
-                <div className="flex h-16 w-16 items-center justify-center overflow-hidden rounded-full bg-slate-100">
+                <div className="relative flex h-16 w-16 items-center justify-center overflow-hidden rounded-full bg-slate-100">
                   {cat.imageUrl ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img
+                    <RemoteImage
                       src={cat.imageUrl}
                       alt={cat.name}
-                      className="h-full w-full object-cover"
-                      loading="lazy"
+                      sizes="64px"
+                      className="object-cover"
                     />
                   ) : (
                     <svg

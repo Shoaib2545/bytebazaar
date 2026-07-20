@@ -4,6 +4,16 @@ import { CategoryNode } from "@/lib/api";
 /**
  * Category navigation bar with a CSS-hover mega-menu built from the
  * category tree. Rendered on the server; no client JS needed.
+ *
+ * The dropdown panels use `hidden` -> `group-hover:block` rather than
+ * `invisible opacity-0`. `visibility:hidden` still generates boxes, so every
+ * panel (one per top-level category, each holding the whole subtree) was being
+ * styled and laid out on first paint of every page — including mobile, where
+ * :hover never fires and the panels can never be shown at all.
+ *
+ * The sub-links are plain `<a>`: `next/link` is a Client Component, and a
+ * top-level category jump into a `force-dynamic` route gains nothing from
+ * client-side routing while costing one hydrated component per menu entry.
  */
 export default function CategoryNav({ tree }: { tree: CategoryNode[] }) {
   if (!tree.length) {
@@ -43,26 +53,26 @@ export default function CategoryNav({ tree }: { tree: CategoryNode[] }) {
             </Link>
 
             {cat.children.length > 0 && (
-              <div className="invisible absolute left-0 top-full z-40 min-w-[520px] rounded-b-lg border border-slate-200 bg-white opacity-0 shadow-xl transition-all duration-150 group-hover:visible group-hover:opacity-100">
+              <div className="absolute left-0 top-full z-40 hidden min-w-[520px] rounded-b-lg border border-slate-200 bg-white shadow-xl group-hover:block">
                 <div className="grid grid-cols-2 gap-x-8 gap-y-4 p-5 lg:grid-cols-3">
                   {cat.children.map((child) => (
                     <div key={child.id}>
-                      <Link
+                      <a
                         href={`/category/${child.slug}`}
                         className="block text-sm font-semibold text-blue-950 hover:text-orange-600"
                       >
                         {child.name}
-                      </Link>
+                      </a>
                       {child.children.length > 0 && (
                         <ul className="mt-1.5 space-y-1">
                           {child.children.map((grand) => (
                             <li key={grand.id}>
-                              <Link
+                              <a
                                 href={`/category/${grand.slug}`}
                                 className="block text-xs text-slate-600 hover:text-orange-600"
                               >
                                 {grand.name}
-                              </Link>
+                              </a>
                             </li>
                           ))}
                         </ul>

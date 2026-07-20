@@ -1,8 +1,10 @@
 import type { Metadata } from "next";
-import { searchProducts, EMPTY_PAGED } from "@/lib/api";
+import { searchCatalog } from "@/lib/api";
+import { EMPTY_SEARCH_RESULTS } from "@/lib/search";
+import ActiveFilterChips from "@/components/ActiveFilterChips";
 import Pagination from "@/components/Pagination";
 import ProductCard from "@/components/ProductCard";
-import SortSelect from "@/components/SortSelect";
+import SortSelect, { SEARCH_SORT_OPTIONS } from "@/components/SortSelect";
 
 export const dynamic = "force-dynamic";
 
@@ -12,35 +14,57 @@ interface Props {
   searchParams: Promise<SearchParams>;
 }
 
-function first(value: string | string[] | undefined): string {
-  if (Array.isArray(value)) return value[0] ?? "";
-  return value ?? "";
+/**
+ * Flatten Next's searchParams into a simple string map (arrays -> csv), same
+ * convention as app/category/[slug]/page.tsx — the search endpoint accepts the
+ * identical page/pageSize/sort/brand/price/attribute-code query params.
+ */
+function normalizeParams(sp: SearchParams): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const [key, value] of Object.entries(sp)) {
+    if (value === undefined) continue;
+    out[key] = Array.isArray(value) ? value.join(",") : value;
+  }
+  return out;
 }
 
 export async function generateMetadata({
   searchParams,
 }: Props): Promise<Metadata> {
-  const q = first((await searchParams).q);
-  return { title: q ? `Search: ${q}` : "Search" };
+  const q = normalizeParams(await searchParams).q?.trim() ?? "";
+  return {
+    title: q ? `Search: ${q}` : "Search",
+    // Internal search results are thin/duplicate content — keep them out of
+    // the index but let crawlers follow through to the products.
+    robots: { index: false, follow: true },
+  };
 }
 
 export default async function SearchPage({ searchParams }: Props) {
-  const sp = await searchParams;
-  const q = first(sp.q).trim();
-  const page = first(sp.page) || "1";
-  const sort = first(sp.sort);
+  // `urlParams` mirrors the address bar and drives the server-rendered
+  // sort/chip links; `query` adds the API's paging defaults on top.
+  const urlParams = normalizeParams(await searchParams);
+  const q = (urlParams.q ?? "").trim();
+  urlParams.q = q;
+  const query = { ...urlParams };
+  if (!query.page) query.page = "1";
+  if (!query.pageSize) query.pageSize = "24";
 
-  const extra: Record<string, string> = { page, pageSize: "24" };
-  if (sort) extra.sort = sort;
+  // `q` travels as its own argument; everything else is passed through so the
+  // filter/sort/pagination URL conventions behave exactly as on a category.
+  const filterParams = { ...query };
+  delete filterParams.q;
+  const results = q
+    ? await searchCatalog(q, filterParams)
+    : { ...EMPTY_SEARCH_RESULTS, query: q };
 
-  const results = q ? await searchProducts(q, extra) : EMPTY_PAGED;
-
-  const urlParams: Record<string, string> = { q, page };
-  if (sort) urlParams.sort = sort;
+  const basePath = "/search";
 
   return (
     <div className="mx-auto max-w-7xl px-4 py-6">
-      <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
+      {/* min-h reserves the header row so the sort control hydrating in does
+          not shove the product grid down (CLS). */}
+      <div className="mb-5 flex min-h-14 flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold text-blue-950">
             {q ? (
@@ -56,19 +80,29 @@ export default async function SearchPage({ searchParams }: Props) {
             {results.totalCount} result{results.totalCount === 1 ? "" : "s"}
           </p>
         </div>
-        <SortSelect basePath="/search" />
+        {q && (
+          <SortSelect
+            basePath={basePath}
+            params={urlParams}
+            options={SEARCH_SORT_OPTIONS}
+          />
+        )}
       </div>
+
+      <ActiveFilterChips basePath={basePath} params={urlParams} />
 
       {results.items.length > 0 ? (
         <>
           <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
-            {results.items.map((p) => (
-              <ProductCard key={p.id} product={p} />
+            {results.items.map((p, i) => (
+              // The first row is above the fold — its image is the LCP
+              // candidate, so load it eagerly rather than lazily.
+              <ProductCard key={p.id} product={p} eager={i < 5} />
             ))}
           </div>
           <Pagination
-            basePath="/search"
-            params={urlParams}
+            basePath={basePath}
+            params={query}
             page={results.page}
             pageSize={results.pageSize}
             totalCount={results.totalCount}

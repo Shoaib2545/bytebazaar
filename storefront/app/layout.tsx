@@ -8,29 +8,70 @@ import SearchBar from "@/components/SearchBar";
 import UserMenu from "@/components/UserMenu";
 import CartButton from "@/components/CartButton";
 import Providers from "@/components/Providers";
+import AnalyticsProvider from "@/components/AnalyticsProvider";
+import { SITE_NAME, SITE_URL } from "@/lib/seo";
 
 // The header nav is built from live API data — render dynamically so
 // `next build` succeeds even when the API is down.
 export const dynamic = "force-dynamic";
 
+// display:swap (the next/font default) keeps text paintable while the webfont
+// loads — no invisible-text FOIT and no font-swap layout shift beyond the
+// metric fallback next/font generates automatically.
 const geistSans = Geist({
   variable: "--font-geist-sans",
   subsets: ["latin"],
+  display: "swap",
+  preload: true,
 });
 
 const geistMono = Geist_Mono({
   variable: "--font-geist-mono",
   subsets: ["latin"],
+  display: "swap",
+  // Mono is only used for incidental UI — don't spend an LCP-blocking preload.
+  preload: false,
 });
 
+const SITE_DESCRIPTION =
+  "ByteBazaar — Pakistan's PC hardware and electronics store. Graphics cards, processors, laptops and more at the best prices in PKR.";
+
 export const metadata: Metadata = {
+  // Lets every page below use relative canonical/OG URLs.
+  metadataBase: new URL(SITE_URL),
   title: {
     default: "ByteBazaar — PC Hardware & Electronics Store",
     template: "%s | ByteBazaar",
   },
-  description:
-    "ByteBazaar — Pakistan's PC hardware and electronics store. Graphics cards, processors, laptops and more at the best prices in PKR.",
+  description: SITE_DESCRIPTION,
+  applicationName: SITE_NAME,
+  alternates: { canonical: "/" },
+  robots: { index: true, follow: true },
+  openGraph: {
+    type: "website",
+    siteName: SITE_NAME,
+    locale: "en_PK",
+    url: "/",
+    title: "ByteBazaar — PC Hardware & Electronics Store",
+    description: SITE_DESCRIPTION,
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "ByteBazaar — PC Hardware & Electronics Store",
+    description: SITE_DESCRIPTION,
+  },
 };
+
+/** Origin the browser talks to for cart/auth/wishlist — worth a preconnect. */
+const CLIENT_API_ORIGIN = (() => {
+  try {
+    return new URL(
+      process.env.NEXT_PUBLIC_API_URL || "http://localhost:5080"
+    ).origin;
+  } catch {
+    return null;
+  }
+})();
 
 export default async function RootLayout({
   children,
@@ -39,13 +80,35 @@ export default async function RootLayout({
 }>) {
   const tree = await getCategoryTree();
 
+  const siteJsonLd = {
+    "@context": "https://schema.org",
+    "@type": "OnlineStore",
+    name: SITE_NAME,
+    url: SITE_URL,
+    description: SITE_DESCRIPTION,
+    currenciesAccepted: "PKR",
+    areaServed: "PK",
+  };
+
   return (
     <html
       lang="en"
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
       <body className="flex min-h-full flex-col bg-slate-100 text-slate-900">
+        {/* React hoists these into <head>; warms the connection the cart uses. */}
+        {CLIENT_API_ORIGIN && (
+          <>
+            <link rel="preconnect" href={CLIENT_API_ORIGIN} crossOrigin="use-credentials" />
+            <link rel="dns-prefetch" href={CLIENT_API_ORIGIN} />
+          </>
+        )}
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(siteJsonLd) }}
+        />
         <Providers>
+        <AnalyticsProvider />
         <header className="sticky top-0 z-50 shadow-md">
           <div className="bg-blue-950">
             <div className="mx-auto flex max-w-7xl items-center gap-4 px-4 py-3">
