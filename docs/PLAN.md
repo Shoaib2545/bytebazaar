@@ -178,6 +178,17 @@ crawlable, back-button-friendly).
   redirects.
 - Analytics funnel: view → add-to-cart → checkout.
 - **Done when:** Lighthouse mobile ≥ 90 on category pages; search suggests as you type.
+- **Status (2026-07-21): substantially complete — one gate unmet.** Commits `61d61b7`
+  (backend+admin), `0b34dc1` (storefront). Delivered and verified against a live stack:
+  Meilisearch search + as-you-type suggest (`source=SearchEngine` confirmed, Postgres
+  fallback), Redis hot-data + output caching, admin-managed redirects, sitemap/robots,
+  canonical + noindex on filtered pages, schema.org/OG metadata, category SEO fields,
+  PostHog funnel (no-op without a key). ✅ search-suggests-as-you-type met.
+  ❌ **Lighthouse gate NOT met:** median ~84 (range 81–91 over repeated runs); the whole
+  deficit is Total Blocking Time (~300–630ms) from Next 16 app-router bootstrap under
+  Lighthouse's 4× CPU throttle. LCP 2.0s and CLS 0 are healthy — the score is dragged by
+  throttled-CPU JS execution, which a CDN/faster network cannot fix. Not confirmed to
+  reach 90 on this hardware; re-measure on target production hardware before calling it.
 
 ### Milestone 7 — Testing, Security & Launch (Weeks 17–19)
 - API integration tests with **Testcontainers** (real Postgres): filter composition,
@@ -190,6 +201,21 @@ crawlable, back-button-friendly).
   Soft launch → fix list → public launch.
 - **Done when:** live with monitoring green, backup restored successfully at least
   once, E2E suite green in CI.
+- **Status (2026-07-21): build/test/hardening complete — not launched (by design).**
+  Commit `1d0a831`. Delivered and verified: Testcontainers integration tests against
+  real Postgres (**stock-race oversell prevention confirmed** — two-buyers-one-unit and
+  ten-contenders-three-units both hold under real row locking; also jsonb/GIN filter
+  branch and coupon idempotency); rate limiting (429 + Retry-After confirmed after 10
+  auth attempts); `/health/live` + `/health/ready` (the health check M0 required but
+  never had); CORS from config; JWT boot-fails on a missing/weak/dev-default key; no
+  vulnerable dependencies; orphaned `/api/catalog/search` removed. Playwright E2E 2/2
+  (money path + admin dynamic-category). k6 load baseline captured (`docs/LOAD-TEST-BASELINE.md`).
+  `docker-compose.prod.yml` + Dockerfiles + Caddy TLS config, executed backup→restore
+  drill, launch runbook, CI extended. Full backend suite **183 passed, 0 failed**.
+  Fixed a self-deadlock in one integration test that hung `dotnet test`/CI.
+  ❌ **Not met — launch itself:** no production deploy, DNS, TLS certificates, or real
+  payment/Sentry keys. Everything here is launch-ready config and scripts; going live is
+  a deliberate human step gated on the runbook's pre-launch checklist.
 
 ---
 
