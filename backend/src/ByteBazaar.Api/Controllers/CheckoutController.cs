@@ -2,6 +2,7 @@ using ByteBazaar.Application.DTOs;
 using ByteBazaar.Application.Services;
 using FluentValidation;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 
 namespace ByteBazaar.Api.Controllers;
 
@@ -20,7 +21,14 @@ public class CheckoutController : ControllerBase
     public ActionResult<IReadOnlyList<ShippingOptionDto>> GetShippingOptions()
         => Ok(_checkoutService.GetShippingOptions());
 
+    /// <summary>
+    /// Order placement. Rate-limited under the strict "checkout" policy: an order is cheap to
+    /// submit and expensive to process, notify on, and clean up, so this is the one anonymous
+    /// write path worth protecting as hard as auth. GET shipping-options stays on the global
+    /// policy — it is a read that touches no datastore.
+    /// </summary>
     [HttpPost]
+    [EnableRateLimiting(RateLimitPolicies.Checkout)]
     public async Task<ActionResult<CheckoutResultDto>> Checkout(
         [FromBody] CheckoutRequest request, [FromServices] IValidator<CheckoutRequest> validator, CancellationToken ct)
     {

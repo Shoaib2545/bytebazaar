@@ -1,0 +1,110 @@
+# ByteBazaar edge reverse proxy.
+#
+# Caddy over nginx for one decisive reason: automatic certificate issuance and
+# renewal via ACME with no cron job, no certbot sidecar and no manual reload —
+# for a single-VPS deployment that removes the most common cause of a 3am
+# outage (an expired certificate nobody was watching).
+#
+# TLS: Caddy provisions and renews Let's Encrypt certificates automatically for
+# every hostname named below, provided (a) the domains' A/AAAA records point at
+# this host and (b) ports 80 and 443 are reachable from the internet. HTTP is
+# redirected to HTTPS automatically. For a staging run against Let's Encrypt's
+# rate limits, set ACME_CA to the staging directory (see docker-compose.prod.yml).
+
+{
+	email {$ACME_EMAIL}
+	# Optional: point at the LE staging CA while rehearsing a deploy.
+	# acme_ca {$ACME_CA}
+}
+
+# ---------------------------------------------------------------- storefront
+{$SITE_DOMAIN} {
+	encode gzip zstd
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		# Next.js needs inline styles/scripts for hydration; tighten per-app once
+		# a nonce strategy is in place.
+		Permissions-Policy "geolocation=(), microphone=(), camera=()"
+		-Server
+	}
+
+	reverse_proxy storefront:3000 {
+		health_uri /
+		health_interval 30s
+		health_timeout 5s
+	}
+}
+
+# ---------------------------------------------------------------------- api
+{$API_DOMAIN} {
+	encode gzip zstd
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		-Server
+	}
+
+	# The API sets the httpOnly `bb_refresh` cookie and both frontends call it
+	# with credentials, so CORS is enforced by the API itself (policy
+	# "Frontends" in Api/Program.cs, origins from Cors__AllowedOrigins__*).
+	# Do NOT add CORS headers here — duplicated Access-Control-Allow-Origin
+	# headers make browsers reject the response.
+
+	# /health/live is safe to expose — it reports only "the process is up" and is
+	# what an external uptime monitor should poll. /health and /health/ready name
+	# every dependency and say which one is down, which is free reconnaissance,
+	# so they stay internal (the compose healthcheck reaches them inside the
+	# network, and an operator can via `docker compose exec` or an SSH tunnel).
+	@health_detail path /health /health/ready
+	respond @health_detail 404
+
+	# Swagger is a catalogue of every endpoint and DTO. Keep it off the public
+	# internet; reach it through an SSH tunnel to the api container instead.
+	@swagger path /swagger*
+	respond @swagger 404
+
+	reverse_proxy api:8080 {
+		# Readiness, not liveness: Caddy should stop sending traffic to an
+		# instance that cannot reach Postgres. /health/ready returns 503 in that
+		# case and 200 when merely Degraded (Redis/Meilisearch down), because a
+		# degraded instance still serves correct responses from its fallbacks.
+		# The upstream probe bypasses the @health_detail 404 above — that rule
+		# applies to public requests arriving at this site, not to Caddy's own
+		# health checks against api:8080.
+		health_uri /health/ready
+		health_interval 30s
+		health_timeout 5s
+	}
+}
+
+# -------------------------------------------------------------------- admin
+{$ADMIN_DOMAIN} {
+	encode gzip zstd
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		X-Robots-Tag "noindex, nofollow"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		-Server
+	}
+
+	# The admin panel is a staff tool with no reason to be world-reachable.
+	# Restrict it to office/VPN ranges; ADMIN_ALLOWED_CIDRS is a space-separated
+	# list. Set it to 0.0.0.0/0 ::/0 only if you accept public exposure.
+	@blocked not remote_ip {$ADMIN_ALLOWED_CIDRS}
+	respond @blocked 403
+
+	reverse_proxy admin:8080 {
+		health_uri /_healthz
+		health_interval 30s
+		health_timeout 5s
+	}
+}

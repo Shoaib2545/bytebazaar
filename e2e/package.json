@@ -1,0 +1,16 @@
+{
+  "name": "bytebazaar-e2e",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Playwright end-to-end tests for the ByteBazaar money paths and the dynamic category/filter engine.",
+  "scripts": {
+    "test": "playwright test",
+    "test:headed": "playwright test --headed",
+    "test:customer": "playwright test tests/customer-purchase.spec.ts",
+    "test:admin": "playwright test tests/admin-dynamic-category.spec.ts",
+    "report": "playwright show-report"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.61.1"
+  }
+}

@@ -6,16 +6,22 @@ using ByteBazaar.Infrastructure.Identity;
 using FluentValidation;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 
 namespace ByteBazaar.Api.Controllers;
 
+/// <summary>
+/// The credential-stuffing surface. Every mutating endpoint here carries the strict "auth"
+/// rate-limit policy (see <see cref="RateLimitPolicies"/>): login and register are the obvious
+/// brute-force targets, and refresh is included because a stolen cookie plus an unthrottled
+/// refresh endpoint is an unlimited token mint.
+/// </summary>
 [ApiController]
 [Route("api/auth")]
 public class AuthController : ControllerBase
 {
     private const string RefreshCookieName = "bb_refresh";
-    private const int RefreshTokenDays = 14;
 
     private readonly UserManager<AppUser> _userManager;
     private readonly IAppDbContext _db;
@@ -29,6 +35,7 @@ public class AuthController : ControllerBase
     }
 
     [HttpPost("register")]
+    [EnableRateLimiting(RateLimitPolicies.Auth)]
     public async Task<IActionResult> Register(
         [FromBody] RegisterRequest request, [FromServices] IValidator<RegisterRequest> validator)
     {
@@ -58,6 +65,7 @@ public class AuthController : ControllerBase
     }
 
     [HttpPost("login")]
+    [EnableRateLimiting(RateLimitPolicies.Auth)]
     public async Task<IActionResult> Login(
         [FromBody] LoginRequest request, [FromServices] IValidator<LoginRequest> validator)
     {
@@ -76,6 +84,7 @@ public class AuthController : ControllerBase
     }
 
     [HttpPost("refresh")]
+    [EnableRateLimiting(RateLimitPolicies.Auth)]
     public async Task<IActionResult> Refresh()
     {
         var tokenValue = Request.Cookies[RefreshCookieName];
@@ -122,13 +131,13 @@ public class AuthController : ControllerBase
             Id = Guid.NewGuid(),
             UserId = user.Id,
             Token = JwtTokenService.CreateRefreshTokenValue(),
-            ExpiresAt = DateTime.UtcNow.AddDays(RefreshTokenDays)
+            ExpiresAt = DateTime.UtcNow.AddDays(_tokenService.RefreshTokenDays)
         };
         _db.RefreshTokens.Add(refreshToken);
         await _db.SaveChangesAsync();
 
         Response.Cookies.Append(RefreshCookieName, refreshToken.Token,
-            BuildCookieOptions(DateTimeOffset.UtcNow.AddDays(RefreshTokenDays)));
+            BuildCookieOptions(DateTimeOffset.UtcNow.AddDays(_tokenService.RefreshTokenDays)));
 
         return new AuthResponseDto
         {

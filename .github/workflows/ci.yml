@@ -6,6 +6,10 @@ on:
   pull_request:
     branches: [main]
 
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   backend:
     name: Backend (.NET 10)
@@ -43,8 +47,23 @@ jobs:
       - name: Build
         run: dotnet build backend/ByteBazaar.sln --configuration Release --no-restore
 
+      # Includes the Testcontainers integration tests (tests/ByteBazaar.Tests/Integration),
+      # which start their own postgres:16-alpine container via the Docker daemon that
+      # ubuntu-latest runners provide. They are independent of the `services:` Postgres above.
       - name: Test
         run: dotnet test backend/ByteBazaar.sln --configuration Release --no-build --verbosity normal
+
+      # `dotnet list package --vulnerable` exits 0 even when it finds something, so the
+      # output has to be inspected for the gate to mean anything.
+      - name: Dependency audit
+        run: |
+          dotnet list backend/ByteBazaar.sln package --vulnerable --include-transitive \
+            > audit.txt 2>&1
+          cat audit.txt
+          if grep -qiE '(Critical|High|Moderate|Low)$|has the following vulnerable packages' audit.txt; then
+            echo "::error::Vulnerable NuGet packages found" >&2
+            exit 1
+          fi
 
   storefront:
     name: Storefront (Next.js)
@@ -91,3 +110,158 @@ jobs:
 
       - name: Build
         run: npm run build
+
+  e2e:
+    name: E2E (Playwright)
+    runs-on: ubuntu-latest
+    # Only worth the ~5 minutes once the three units are known good.
+    needs: [backend, storefront, admin]
+    timeout-minutes: 30
+
+    env:
+      E2E_BASE_URL: http://localhost:3000
+      E2E_API_URL: http://localhost:5080
+      E2E_ADMIN_URL: http://localhost:5173
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      # Uses the committed dev compose file, whose published ports (Postgres
+      # 5433, Redis 6379, Meilisearch 7701) are exactly what the API's default
+      # appsettings.json expects — so no connection-string overrides are needed.
+      - name: Start backing services
+        run: docker compose up -d postgres redis meilisearch
+
+      - name: Wait for services to be healthy
+        run: |
+          for i in $(seq 1 60); do
+            unhealthy=$(docker compose ps --format '{{.Service}} {{.Health}}' \
+              | awk '$2 != "healthy" && $2 != "" { print $1 }')
+            if [ -z "$unhealthy" ]; then echo "all healthy"; exit 0; fi
+            sleep 2
+          done
+          docker compose ps
+          echo "services did not become healthy" >&2
+          exit 1
+
+      # The API applies migrations and seeds on startup, so no separate
+      # migration step is required.
+      - name: Build API
+        run: dotnet build backend/src/ByteBazaar.Api/ByteBazaar.Api.csproj -c Release
+
+      - name: Start API
+        env:
+          # The E2E suite logs in and places orders far faster than a human, and the
+          # production defaults (10 auth requests/min, 10 checkouts/min per IP) would
+          # 429 it. Raised rather than disabled so the limiter middleware still runs in
+          # the pipeline the tests exercise.
+          RateLimiting__Auth__PermitLimit: "1000"
+          RateLimiting__Checkout__PermitLimit: "1000"
+          RateLimiting__Global__PermitLimit: "10000"
+        run: |
+          nohup dotnet run --project backend/src/ByteBazaar.Api -c Release --no-build \
+            > /tmp/api.log 2>&1 &
+          echo "waiting for API on :5080"
+          for i in $(seq 1 90); do
+            # /health/ready returns 503 until Postgres is reachable AND migrated,
+            # and 200 when healthy or merely degraded (Redis/Meilisearch down).
+            # It replaces the old /api/catalog/categories/tree gate, which was
+            # output-cached for 10 minutes and so could answer 200 from cache
+            # after the database had fallen over.
+            if curl -fsS http://localhost:5080/health/ready > /dev/null 2>&1; then
+              echo "API up after ${i}s"; exit 0
+            fi
+            sleep 1
+          done
+          echo "API failed to start" >&2
+          tail -100 /tmp/api.log
+          exit 1
+
+      - name: Build and start storefront
+        working-directory: storefront
+        env:
+          NEXT_PUBLIC_API_URL: http://localhost:5080
+          API_URL: http://localhost:5080
+          NEXT_PUBLIC_SITE_URL: http://localhost:3000
+          REVALIDATE_SECRET: ci-secret
+        run: |
+          npm ci
+          npm run build
+          nohup npm run start > /tmp/storefront.log 2>&1 &
+          for i in $(seq 1 60); do
+            if curl -fsS http://localhost:3000/ > /dev/null 2>&1; then
+              echo "storefront up after ${i}s"; exit 0
+            fi
+            sleep 1
+          done
+          echo "storefront failed to start" >&2
+          tail -100 /tmp/storefront.log
+          exit 1
+
+      - name: Start admin
+        working-directory: admin
+        env:
+          VITE_API_URL: http://localhost:5080
+        run: |
+          npm ci
+          nohup npm run dev -- --port 5173 --host 127.0.0.1 > /tmp/admin.log 2>&1 &
+          for i in $(seq 1 60); do
+            if curl -fsS http://localhost:5173/ > /dev/null 2>&1; then
+              echo "admin up after ${i}s"; exit 0
+            fi
+            sleep 1
+          done
+          echo "admin failed to start" >&2
+          tail -100 /tmp/admin.log
+          exit 1
+
+      - name: Install Playwright
+        working-directory: e2e
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+
+      - name: Run E2E suite
+        working-directory: e2e
+        run: npx playwright test
+
+      - name: Upload Playwright report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: e2e/playwright-report
+          retention-days: 14
+
+      # Traces/screenshots/videos for any failure — the whole point of
+      # trace: 'retain-on-failure' is being able to open them after a red CI run.
+      - name: Upload Playwright traces
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-traces
+          path: e2e/test-results
+          retention-days: 14
+
+      - name: Dump service logs
+        if: failure()
+        run: |
+          echo "===== API =====";        tail -200 /tmp/api.log        || true
+          echo "===== STOREFRONT ====="; tail -200 /tmp/storefront.log || true
+          echo "===== ADMIN =====";      tail -200 /tmp/admin.log      || true
+          echo "===== COMPOSE ====="
+          docker compose logs --tail=200 || true
+
+      - name: Tear down
+        if: always()
+        run: docker compose down -v

@@ -1,0 +1,5 @@
+{
+  "$schema": "https://xunit.net/schema/current/xunit.runner.schema.json",
+  "//": "Collections run serially. The InMemory unit tests and the Testcontainers integration tests share one test-host process; running 171 InMemory-EF classes in parallel with concurrent real-Postgres connection storms (the stock-race and coupon stress tests each fan out 6-10 simultaneous connections) crashes the host (MSBUILD MSB4166 'child node exited prematurely'). Serializing collections keeps `dotnet test` on the whole solution stable; the unit suite is still only ~30s. The concurrency the stock-race tests exercise is created explicitly inside each test via Task.WhenAll, so it is unaffected by this setting.",
+  "parallelizeTestCollections": false
+}

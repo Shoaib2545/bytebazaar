@@ -1,0 +1,275 @@
+# ByteBazaar — production stack.
+#
+#   cp .env.prod.example .env.prod && $EDITOR .env.prod
+#   docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --build
+#
+# CONFIG ONLY — this file has never been deployed. Work through the pre-launch
+# checklist in docs/LAUNCH-RUNBOOK.md before pointing DNS at it.
+#
+# Design notes
+# ------------
+# * Nothing but `caddy` publishes a host port. Postgres, Redis and Meilisearch
+#   are reachable only on the internal compose network — the single most
+#   valuable hardening step versus the dev compose file, which publishes all
+#   three to the host.
+# * Every secret comes from the environment. There are no credentials in this
+#   file; `docker compose config` will fail loudly on anything unset because of
+#   the `:?` expansions.
+# * Frontend images bake NEXT_PUBLIC_*/VITE_* at build time (see the Dockerfile
+#   headers), so those appear under `build.args`, not `environment`.
+
+name: bytebazaar
+
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "5"
+
+x-restart: &default-restart
+  restart: unless-stopped
+
+services:
+  # --------------------------------------------------------------- datastores
+  postgres:
+    image: postgres:16-alpine
+    <<: *default-restart
+    logging: *default-logging
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:?set POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:?set POSTGRES_DB}
+      # Checksums catch silent disk corruption; cheap insurance on a VPS disk.
+      POSTGRES_INITDB_ARGS: "--data-checksums"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    # No `ports:` — the database must not be reachable from outside the host.
+    # Use `docker compose exec postgres psql` or an SSH tunnel for admin access.
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    deploy:
+      resources:
+        limits: { cpus: "2.0", memory: 2G }
+        reservations: { memory: 512M }
+    stop_grace_period: 30s
+
+  redis:
+    image: redis:7-alpine
+    <<: *default-restart
+    logging: *default-logging
+    # Redis holds cached catalog data, not durable state, so an eviction policy
+    # is correct: under memory pressure drop cold keys rather than start
+    # refusing writes (the default `noeviction`) and take the API down with it.
+    command:
+      - redis-server
+      - --requirepass
+      - ${REDIS_PASSWORD:?set REDIS_PASSWORD}
+      - --maxmemory
+      - 384mb
+      - --maxmemory-policy
+      - allkeys-lru
+      - --save
+      - ""
+      - --appendonly
+      - "no"
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -a $${REDIS_PASSWORD} ping | grep -q PONG"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+    deploy:
+      resources:
+        limits: { cpus: "1.0", memory: 512M }
+
+  meilisearch:
+    image: getmeili/meilisearch:v1.11
+    <<: *default-restart
+    logging: *default-logging
+    environment:
+      MEILI_MASTER_KEY: ${MEILI_MASTER_KEY:?set MEILI_MASTER_KEY}
+      MEILI_ENV: production
+      MEILI_NO_ANALYTICS: "true"
+    volumes:
+      - meilidata:/meili_data
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:7700/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    deploy:
+      resources:
+        limits: { cpus: "1.0", memory: 1G }
+
+  # --------------------------------------------------------------------- api
+  api:
+    build:
+      context: .
+      dockerfile: deploy/api.Dockerfile
+    <<: *default-restart
+    logging: *default-logging
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+      meilisearch: { condition: service_healthy }
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      ASPNETCORE_URLS: http://0.0.0.0:8080
+      # Double underscore is .NET's separator for nested configuration keys.
+      ConnectionStrings__Default: >-
+        Host=postgres;Port=5432;Database=${POSTGRES_DB};Username=${POSTGRES_USER};Password=${POSTGRES_PASSWORD};SSL Mode=Disable;Maximum Pool Size=50
+      ConnectionStrings__Redis: redis:6379,password=${REDIS_PASSWORD},abortConnect=false
+      Meilisearch__Url: http://meilisearch:7700
+      Meilisearch__ApiKey: ${MEILI_MASTER_KEY}
+      Meilisearch__IndexName: ${MEILI_INDEX_NAME:-products}
+      # MUST be a fresh random value — the default in appsettings.json is a
+      # published development key and would let anyone mint admin JWTs.
+      Jwt__Key: ${JWT_KEY:?set JWT_KEY (>=64 random chars)}
+      Jwt__Issuer: ${JWT_ISSUER:-ByteBazaar}
+      Jwt__Audience: ${JWT_AUDIENCE:-ByteBazaar.Clients}
+      Jwt__AccessTokenMinutes: ${JWT_ACCESS_TOKEN_MINUTES:-15}
+      Jwt__RefreshTokenDays: ${JWT_REFRESH_TOKEN_DAYS:-14}
+      # CORS: the API refuses to start outside Development with an empty list, so
+      # both frontends are guaranteed to work on the real domains rather than
+      # silently failing preflight. Wildcards are rejected (the policy allows
+      # credentials).
+      # Admin is derived from ADMIN_DOMAIN (already required by caddy) rather than
+      # adding another variable; Caddy serves it over HTTPS only.
+      Cors__AllowedOrigins__0: ${PUBLIC_SITE_URL:?set PUBLIC_SITE_URL}
+      Cors__AllowedOrigins__1: https://${ADMIN_DOMAIN:?set ADMIN_DOMAIN}
+      # Caddy terminates every request, so X-Forwarded-For is trustworthy here and
+      # is what the rate limiter partitions on. Without this every client would
+      # share one bucket keyed on the proxy's address.
+      ReverseProxy__Enabled: "true"
+      # Rate limits (fixed windows per client IP / authenticated user).
+      RateLimiting__Enabled: ${RATE_LIMIT_ENABLED:-true}
+      RateLimiting__Global__PermitLimit: ${RATE_LIMIT_GLOBAL:-300}
+      RateLimiting__Auth__PermitLimit: ${RATE_LIMIT_AUTH:-10}
+      RateLimiting__Checkout__PermitLimit: ${RATE_LIMIT_CHECKOUT:-10}
+      Serilog__MinimumLevel__Default: Information
+    healthcheck:
+      # Readiness, deliberately — this gates `depends_on: service_healthy` for the
+      # frontends, and starting them against an API that cannot reach Postgres just
+      # moves the failure downstream. /health/ready is 200 when healthy OR degraded
+      # (Redis/Meilisearch down, both of which have working fallbacks) and 503 only
+      # when Postgres is unreachable or unmigrated.
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8080/health/ready || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
+    deploy:
+      resources:
+        limits: { cpus: "2.0", memory: 1G }
+        reservations: { memory: 256M }
+    stop_grace_period: 30s
+
+  # -------------------------------------------------------------- storefront
+  storefront:
+    build:
+      context: .
+      dockerfile: deploy/storefront.Dockerfile
+      args:
+        # Compile-time: baked into the client bundle. Changing these requires
+        # `docker compose build storefront`, not just a restart.
+        NEXT_PUBLIC_API_URL: ${PUBLIC_API_URL:?set PUBLIC_API_URL}
+        NEXT_PUBLIC_SITE_URL: ${PUBLIC_SITE_URL:?set PUBLIC_SITE_URL}
+        NEXT_PUBLIC_IMAGE_HOSTS: ${NEXT_PUBLIC_IMAGE_HOSTS:?set NEXT_PUBLIC_IMAGE_HOSTS}
+        NEXT_PUBLIC_POSTHOG_KEY: ${NEXT_PUBLIC_POSTHOG_KEY:-}
+        NEXT_PUBLIC_POSTHOG_HOST: ${NEXT_PUBLIC_POSTHOG_HOST:-https://us.i.posthog.com}
+    <<: *default-restart
+    logging: *default-logging
+    depends_on:
+      api: { condition: service_healthy }
+    environment:
+      NODE_ENV: production
+      # Runtime-only (server components). Uses the internal service name so
+      # server-side rendering never leaves the docker network.
+      API_URL: http://api:8080
+      REVALIDATE_SECRET: ${REVALIDATE_SECRET:?set REVALIDATE_SECRET}
+      REDIRECTS_TTL_MS: ${REDIRECTS_TTL_MS:-60000}
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:3000/ >/dev/null || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 40s
+    deploy:
+      resources:
+        limits: { cpus: "2.0", memory: 1G }
+        reservations: { memory: 256M }
+
+  # ------------------------------------------------------------------- admin
+  admin:
+    build:
+      context: .
+      dockerfile: deploy/admin.Dockerfile
+      args:
+        VITE_API_URL: ${PUBLIC_API_URL:?set PUBLIC_API_URL}
+    <<: *default-restart
+    logging: *default-logging
+    depends_on:
+      api: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://localhost:8080/_healthz || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    deploy:
+      resources:
+        limits: { cpus: "0.5", memory: 128M }
+
+  # --------------------------------------------------------- edge / TLS proxy
+  caddy:
+    image: caddy:2-alpine
+    <<: *default-restart
+    logging: *default-logging
+    depends_on:
+      storefront: { condition: service_healthy }
+      admin: { condition: service_healthy }
+      api: { condition: service_healthy }
+    # The ONLY service bound to host ports. 80 is required for the ACME
+    # HTTP-01 challenge and the HTTPS redirect.
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp" # HTTP/3
+    environment:
+      SITE_DOMAIN: ${SITE_DOMAIN:?set SITE_DOMAIN}
+      API_DOMAIN: ${API_DOMAIN:?set API_DOMAIN}
+      ADMIN_DOMAIN: ${ADMIN_DOMAIN:?set ADMIN_DOMAIN}
+      ACME_EMAIL: ${ACME_EMAIL:?set ACME_EMAIL}
+      ADMIN_ALLOWED_CIDRS: ${ADMIN_ALLOWED_CIDRS:?set ADMIN_ALLOWED_CIDRS}
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      # Persisting these is essential: losing caddy_data means re-requesting
+      # certificates on every restart and hitting Let's Encrypt rate limits.
+      - caddy_data:/data
+      - caddy_config:/config
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://localhost:80 || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    deploy:
+      resources:
+        limits: { cpus: "1.0", memory: 256M }
+
+volumes:
+  pgdata:
+  meilidata:
+  caddy_data:
+  caddy_config:
+
+networks:
+  default:
+    name: bytebazaar-prod

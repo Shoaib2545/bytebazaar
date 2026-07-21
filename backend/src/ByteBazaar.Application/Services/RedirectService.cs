@@ -115,6 +115,30 @@ public class RedirectService
         return true;
     }
 
+    /// <summary>
+    /// The FromPath/ToPath asymmetry is deliberate, not an oversight.
+    ///
+    /// FromPath is a <em>lookup key</em>. It is matched against an inbound request path, and it must
+    /// match however the visitor (or Googlebot, or an old inbound link) happened to type it — so it
+    /// is aggressively normalized on write and on lookup, and the unique index on the normalized
+    /// value is what guarantees one rule per source path.
+    ///
+    /// ToPath is a <em>destination emitted verbatim in a Location header</em>, and normalizing it
+    /// would be lossy in three ways that all produce broken redirects:
+    ///   * absolute URLs — "https://Docs.Example.com/x" would be lowercased and, worse, have its
+    ///     scheme mangled by the leading-slash rule;
+    ///   * query strings and fragments — NormalizePath truncates at '?' and '#', silently dropping
+    ///     "/search?q=gpu" down to "/search";
+    ///   * case-sensitive targets — path case matters on most non-Windows origins and on any
+    ///     external host we redirect to.
+    /// Trim() only removes accidental whitespace, which is always safe.
+    ///
+    /// The admin UI consequence (typing "/Category/GPUs" as FromPath shows it rewritten, as ToPath
+    /// does not) is honest rather than confusing: the two fields genuinely have different
+    /// semantics, and showing FromPath as it will actually be matched is the more useful feedback.
+    /// Making them consistent by normalizing ToPath would break real redirects; making them
+    /// consistent by *not* normalizing FromPath would break matching outright.
+    /// </summary>
     private static void Apply(Redirect redirect, RedirectUpsertRequest request)
     {
         redirect.FromPath = NormalizePath(request.FromPath);

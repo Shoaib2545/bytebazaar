@@ -62,10 +62,8 @@ public class CatalogController : ControllerBase
         return product is null ? NotFound() : Ok(product);
     }
 
-    [HttpGet("search")]
-    public async Task<ActionResult<PagedResultDto<ProductListItemDto>>> Search(
-        [FromQuery] string? q, CancellationToken ct)
-    {
-        return Ok(await _catalogService.SearchAsync(q, CatalogQueryBinder.FromRequest(Request), ct));
-    }
+    // GET /api/catalog/search was M3's Postgres full-text endpoint. M6's /api/search supersedes it
+    // (Meilisearch, with this same query as its fallback) and is the only one the storefront calls,
+    // so the route is retired. CatalogService.SearchAsync is NOT dead code — SearchService calls it
+    // whenever Meilisearch is unreachable or unconfigured.
 }
