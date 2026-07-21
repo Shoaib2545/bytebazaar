@@ -1,6 +1,6 @@
 # ByteBazaar — E-Commerce Platform Build Plan
 
-Reference site: https://www.czone.com.pk/ (computer hardware / electronics store, Pakistan)
+Domain: computer hardware / electronics retail (Pakistan market)
 
 > Working name **ByteBazaar** (verify domain + SECP availability before branding).
 > Alternatives considered: VoltCart, CoreMandi, TechNexa.

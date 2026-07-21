@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-ByteBazaar — an e-commerce platform (czone.com.pk-style PC hardware store) with a public storefront, admin panel, and **dynamic categories/filters**: admins define categories and their filterable attributes as data; the storefront filter sidebar and admin product forms are generated from those definitions at runtime. Build plan and milestone status: `docs/PLAN.md` and `README.md`.
+ByteBazaar — an e-commerce platform (PC hardware / electronics store) with a public storefront, admin panel, and **dynamic categories/filters**: admins define categories and their filterable attributes as data; the storefront filter sidebar and admin product forms are generated from those definitions at runtime. Build plan and milestone status: `docs/PLAN.md` and `README.md`.
 
 ## Commands
 

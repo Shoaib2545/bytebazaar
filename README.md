@@ -1,8 +1,8 @@
 # ByteBazaar
 
-An e-commerce platform for computer hardware / electronics (reference:
-[czone.com.pk](https://www.czone.com.pk/)) with a public storefront, a custom
-admin panel, **dynamic categories** (nested, admin-managed, no code changes) and
+An e-commerce platform for computer hardware / electronics with a public
+storefront, a custom admin panel, **dynamic categories** (nested, admin-managed,
+no code changes) and
 **dynamic filters** (filter sidebar generated from admin-defined attributes per
 category, stored as JSONB in PostgreSQL).
 
