@@ -117,18 +117,6 @@ from the running API's OpenAPI document:
 
 See [packages/api-client/README.md](packages/api-client/README.md).
 
-## Milestone status
-
-Milestones as defined in [docs/PLAN.md](docs/PLAN.md):
-
-| Milestone | Scope | Status |
-|---|---|---|
-| M0 | Repo, CI, Docker Compose, skeleton projects | ✅ Done |
-| M1 | Auth (JWT + refresh), roles, seeded admin | ✅ Done |
-| M2 | Dynamic categories + attributes (admin CRUD, JSONB) | ✅ Core done |
-| M3 | Catalog: products, dynamic filters, search, storefront pages | ✅ Core done |
-| M4+ | Cart, checkout, orders, payments, shipping, emails, Meilisearch | ⏳ Next |
-
 ## CI
 
 GitHub Actions ([.github/workflows/ci.yml](.github/workflows/ci.yml)) runs on
